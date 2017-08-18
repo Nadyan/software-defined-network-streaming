@@ -1,0 +1,6 @@
+habilitar as estatisticas:
+curl http://127.0.0.1:8080/wm/statistics/config/enable/json -X POST
+
+
+pegar consumo de banda na porta <port>
+curl http://127.0.0.1:8080/wm/statistics/bandwidth/<switchMAC>/<port>/json -X GET

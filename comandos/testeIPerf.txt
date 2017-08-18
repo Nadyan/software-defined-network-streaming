@@ -1,0 +1,37 @@
+http://www.frank-durr.de/?p=68
+
+
+Comando CURL para adicionar Flows (?):
+
+curl -u admin:admin -H 'Content-type: application/json' -X PUT -d '{"installInHw":"true", "name":"flow1", "node": {"id":"00:00:00:00:00:00:00:02", "type":"OF"}, "ingressPort":"2", "etherType": "0x800", "protocol": "6", "tpDst": "80", "priority":"65535","actions":["OUTPUT=1"]}' 'http://localhost:8080/controller/nb/v2/flowprogrammer/default/node/OF/00:00:00:00:00:00:00:02/staticFlow/flow1'
+
+-u: username:password
+
+
+Comando CURL para deletar Flows (?):
+
+curl -u admin:admin -X DELETE 'http://localhost:8080/controller/nb/v2/flowprogrammer/default/node/OF/00:00:00:00:00:00:00:02/staticFlow/flow1'
+
+
+
+
+
+
+
+iPerf:
+
+setar um host como server:
+iperf -s
+
+outro host enviará as requisições:
+iperf -c serverIP -l pckSize -t timeInSec
+
+ex: pcktSize = 64 bytes e timeInSec = 20 s
+iperf -c serverIP -l 64 -t 20
+
+
+
+instalando iperf:
+sudo add-apt-repository "ppa:patrickdk/general-lucid"
+sudo apt-get update
+sudo apt-get install iperf3

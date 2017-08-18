@@ -1,0 +1,6 @@
+no servidor:
+$ vlc -vvv video.mp4 --sout '#rtp{mux=ts,dst=10.0.0.1,sdp=sap,name="teste"}'
+
+
+no cliente:
+$ vlc rtp://:5004

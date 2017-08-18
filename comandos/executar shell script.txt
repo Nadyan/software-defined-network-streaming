@@ -1,0 +1,5 @@
+dar permissao:
+$ chmod a+x nome.sh
+
+executar:
+$ ./nome.sh
