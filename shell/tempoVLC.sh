@@ -10,6 +10,6 @@ vlc -vvv video.mp4 --sout '#rtp{mux=ts,dst=10.0.0.2,sdp=sap,name="teste"}'
 
 TEMPO2=$(($(date +%s%3N)))
 
-TEMPO=$TEMPO2-$TEMPO1
+TEMPO3=$TEMPO2-$TEMPO1
 
 echo $TEMPO3 ms
