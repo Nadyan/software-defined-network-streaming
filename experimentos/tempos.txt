@@ -1,0 +1,29 @@
+experimento 1:
+
+    #1    
+
+    - tempo fluxo1: 62600 ms
+    - tempo fluxo2: 62407 ms
+    - tempo de criacao do fluxo (fluxo1-fluxo2): 193 ms
+
+    #2
+
+    - tempo fluxo1: 62298 ms
+    - tempo fluxo2: 62262 ms
+    - tempo de criacao do fluxo (fluxo1-fluxo2): 66 ms
+
+    #3
+
+    - tempo fluxo1: 62333 ms
+    - tempo fluxo2: 62241 ms
+    - tempo de criacao do fluxo (fluxo1-fluxo2): 92 ms
+
+    #4
+
+    - tempo fluxo1: 62403 ms
+    - tempo fluxo2: 62223 ms
+    - tempo de criacao do fluxo (fluxo1-fluxo2): 180 ms
+
+
+    media: 132,75 ms
+    desvio padrao: 54,72
