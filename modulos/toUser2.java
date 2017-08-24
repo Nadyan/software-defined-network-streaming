@@ -49,9 +49,10 @@ import net.floodlightcontroller.util.FlowModUtils;
  * Nadyan Suriel Pscheidt - UDESC
  * Abordagem para Distribuição de Vídeo Baseada em Redes Definidas por Software 
  * 
- * Este módulo foi construido com a finalidade de testar o desvio de fluxos
+ * Este módulo foi construido com a finalidade de testar o desvio de fluxos.
  * Os fluxos originados em server1 são desviados para user2, nao importa
  * seu destino original
+ * 
  */
 
 public class ToUser2 implements IOFMessageListener, IFloodlightModule {
@@ -62,10 +63,17 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 	private IPv4Address ipServer1 = IPv4Address.of("10.0.0.1");
 	private IPv4Address ipUser1 = IPv4Address.of("10.0.0.2");
 	private IPv4Address ipUser2 = IPv4Address.of("10.0.0.3");
+	//private IPv4Address ipUser3 = IPv4Address.of("10.0.0.4");
 
-	private MacAddress macServer1 = MacAddress.of("00:00:00:00:00:01");
-	private MacAddress macUser1 = MacAddress.of("00:00:00:00:00:02");
+	//private MacAddress macServer1 = MacAddress.of("00:00:00:00:00:01");
+	//private MacAddress macUser1 = MacAddress.of("00:00:00:00:00:02");
 	private MacAddress macUser2 = MacAddress.of("00:00:00:00:00:03");
+	//private MacAddress macUser3 = MacAddress.of("00:00:00:00:00:04");
+	
+	//private int s1Port = 4;
+	//private int u1Port = 1;
+	private int u2Port = 2;
+	//private int u3Port = 3;
 	
 	@Override
 	public String getName() {
@@ -108,7 +116,7 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 	@Override
 	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlightProvider = context.getServiceImpl(IFloodlightProviderService.class);
-		logger = LoggerFactory.getLogger(ToUser2.class);
+		logger = LoggerFactory.getLogger(RedirectUDP.class);
 	}
 
 	@Override
@@ -125,7 +133,7 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 			IPv4 ipv4 = (IPv4) eth.getPayload();
 			
 			IPv4Address srcIp = ipv4.getSourceAddress();
-			IPv4Address dstIp = ipv4.getDestinationAddress();
+			//IPv4Address dstIp = ipv4.getDestinationAddress();
 			
 			if(ipv4.getProtocol() == IpProtocol.UDP) {
 				UDP udp = (UDP) ipv4.getPayload();
@@ -149,7 +157,7 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 									.setValue(macUser2)
 									.build()).build();
 					
-					OFActionOutput outputUser2 = actions.output(OFPort.of(2), Integer.MAX_VALUE);
+					OFActionOutput outputUser2 = actions.output(OFPort.of(u2Port), Integer.MAX_VALUE);
 					
 					actionsTo.add(setDstIPu2);
 					actionsTo.add(setDstMACu2);
@@ -158,6 +166,7 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 					OFFlowAdd flowToUDP = fluxoUDP(createMatchFromPacket(sw, dstPort, cntx), my13Factory, actionsTo);
 					
 					sw.write(flowToUDP);
+					logger.info("Fluxos instalados\n");
 				}
 			}
 		}
@@ -199,3 +208,4 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 		return mb.build();
 	}
 }
+
