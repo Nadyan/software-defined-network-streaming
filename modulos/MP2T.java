@@ -45,7 +45,7 @@ public class MP2T extends BasePacket  {
 	
 	@Override 
 	public byte[] serialize() {
-		//resetChecksum();
+		resetChecksum();
 		
 		byte[] data = new byte[HEADER_SIZE];
 		ByteBuffer bf = ByteBuffer.wrap(data);
