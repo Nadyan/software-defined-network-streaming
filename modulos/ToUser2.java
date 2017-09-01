@@ -1,4 +1,4 @@
-package net.floodlightcontroller.toUser2;
+package net.floodlightcontroller.redirectUDP;
 
 import java.util.ArrayList;
 import java.util.Collection;
@@ -42,20 +42,22 @@ import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
+import net.floodlightcontroller.packet.RTP;
+import net.floodlightcontroller.packet.RTPPayloadType;
 import net.floodlightcontroller.packet.UDP;
+import net.floodlightcontroller.packet.UDPType;
 import net.floodlightcontroller.util.FlowModUtils;
 
 /*
  * Nadyan Suriel Pscheidt - UDESC
- * Abordagem para Distribuição de Vídeo Baseada em Redes Definidas por Software 
  * 
- * Este módulo foi construido com a finalidade de testar o desvio de fluxos.
+ * Este módulo foi construido com a finalidade de testar o desvio de fluxos
  * Os fluxos originados em server1 são desviados para user2, nao importa
  * seu destino original
  * 
  */
 
-public class ToUser2 implements IOFMessageListener, IFloodlightModule {
+public class RedirectUDP implements IOFMessageListener, IFloodlightModule {
 
 	private IFloodlightProviderService floodlightProvider;
 	private static Logger logger;
@@ -78,7 +80,7 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 	@Override
 	public String getName() {
 		// TODO Auto-generated method stub
-		return ToUser2.class.getSimpleName();
+		return RedirectUDP.class.getSimpleName();
 	}
 
 	@Override
@@ -138,7 +140,12 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 			if(ipv4.getProtocol() == IpProtocol.UDP) {
 				UDP udp = (UDP) ipv4.getPayload();
 				
-				if(srcIp.compareTo(ipServer1) == 0) { // se a origem for server1
+				RTP rtp = (RTP) udp.getPayload();
+				
+				if(srcIp.compareTo(ipServer1) == 0 								// se vem do server
+						&& udp.getUdpType() == UDPType.RTP						// se é RTP
+						&& rtp.getPayloadType() == RTPPayloadType.MPEG_II_TS) { // se é MPEG-II TS
+					
 					TransportPort dstPort = udp.getDestinationPort();
 					
 					OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
@@ -148,12 +155,12 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 					List<OFAction> actionsTo = new ArrayList<OFAction>();
 					
 					OFActionSetField setDstIPu2 = actions.buildSetField()
-							.setField(oxms.buildIpv4Dst()
+									.setField(oxms.buildIpv4Dst()
 									.setValue(ipUser2)
 									.build()).build();
 					
 					OFActionSetField setDstMACu2 = actions.buildSetField()
-							.setField(oxms.buildEthDst()
+									.setField(oxms.buildEthDst()
 									.setValue(macUser2)
 									.build()).build();
 					
@@ -185,7 +192,7 @@ public class ToUser2 implements IOFMessageListener, IFloodlightModule {
 				.setFlags(flags)
 				.setActions(actions)
 				.setBufferId(OFBufferId.NO_BUFFER)
-				.setIdleTimeout(5)
+				.setIdleTimeout(1)
 				.setHardTimeout(0)
 				.setMatch(match)
 				.setCookie(U64.of(1L << 59))
