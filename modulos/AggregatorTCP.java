@@ -177,14 +177,14 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 						List<OFAction> actionsTo = new ArrayList<OFAction>();
 						
 						OFActionSetField setDstIp = actions.buildSetField()
-													.setField(oxms.buildIpv4Dst()
-													.setValue(srcIp)
-													.build()).build();
+						                            .setField(oxms.buildIpv4Dst()
+						                            .setValue(srcIp)
+						                            .build()).build();
 						
 						OFActionSetField setDstMac = actions.buildSetField()
-													 .setField(oxms.buildEthDst()
-													 .setValue(srcMac)
-													 .build()).build();
+						                             .setField(oxms.buildEthDst()
+						                             .setValue(srcMac)
+						                             .build()).build();    			
 						
 						if(srcIp == ipUser1) {
 							userPort = u1Port;
@@ -225,15 +225,15 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 		flags.add(OFFlowModFlags.SEND_FLOW_REM);
 		
 		OFFlowAdd flowToTCP = myFactory
-							  .buildFlowAdd()
-							  .setActions(actions)
-							  .setBufferId(OFBufferId.NO_BUFFER)
-							  .setIdleTimeout(1)
-							  .setHardTimeout(0)
-							  .setMatch(match)
-							  .setCookie(U64.of(1L << 59))
-							  .setPriority(FlowModUtils.PRIORITY_HIGH)
-							  .build();
+		                      .buildFlowAdd()
+		                      .setActions(actions)
+		                      .setBufferId(OFBufferId.NO_BUFFER)
+		                      .setIdleTimeout(1)
+		                      .setHardTimeout(0)
+		                      .setMatch(match)
+		                      .setCookie(U64.of(1L << 59))
+		                      .setPriority(FlowModUtils.PRIORITY_HIGH)
+		                      .build();
 		return flowToTCP;
 	}
 	
@@ -241,10 +241,10 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 		Match.Builder mb = sw.getOFFactory().buildMatch();
 		
 		mb.setExact(MatchField.ETH_TYPE, EthType.IPv4)
-			.setExact(MatchField.IPV4_SRC, dstIp) // ip server
-			.setExact(MatchField.IPV4_DST, srcIp) // ip client
-			.setExact(MatchField.IP_PROTO, IpProtocol.TCP)
-			.setExact(MatchField.TCP_DST, port);
+	        .setExact(MatchField.IPV4_SRC, dstIp) // ip server
+	        .setExact(MatchField.IPV4_DST, srcIp) // ip client
+	        .setExact(MatchField.IP_PROTO, IpProtocol.TCP)
+	        .setExact(MatchField.TCP_DST, port);
 	
 		return mb.build();
 	}
@@ -261,5 +261,9 @@ class Request {
 		this.receiverPort = receiverPort;
 	}
 }
+
+
+
+
 
 
