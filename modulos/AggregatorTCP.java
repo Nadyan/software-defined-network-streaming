@@ -42,12 +42,10 @@ import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
-import net.floodlightcontroller.duplicate.DuplicateUDP;
 import net.floodlightcontroller.packet.Data;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.packet.TCP;
-import net.floodlightcontroller.packet.TCPType;
 import net.floodlightcontroller.packet.HTTP;
 import net.floodlightcontroller.packet.HTTPMethod;
 import net.floodlightcontroller.util.FlowModUtils;
@@ -68,10 +66,11 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 	//private MacAddress macUser2 = MacAddress.of("00:00:00:00:00:03");
 	//private MacAddress macUser3 = MacAddress.of("00:00:00:00:00:04");
 	
-	//private int s1Port = 4;
-	//private int u1Port = 1;
-	//private int u2Port = 2;
-	//private int u3Port = 3;
+	private int s1Port = 4;
+	private int u1Port = 1;
+	private int u2Port = 2;
+	private int u3Port = 3;
+	int userPort;
 	
 	@Override
 	public String getName() {
@@ -113,7 +112,6 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 	@Override
 	public void startUp(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlightProvider.addOFMessageListener(OFType.PACKET_IN, this);
-
 	}
 
 	@Override
@@ -121,40 +119,147 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 		
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		
+		MacAddress srcMac = eth.getSourceMACAddress();				// client mac
+		MacAddress dstMac = eth.getDestinationMACAddress();			// server mac
+		
 		if(eth.getEtherType() == EthType.IPv4) {
 			IPv4 ipv4 = (IPv4) eth.getPayload();
 			
-			IPv4Address srcIp = ipv4.getSourceAddress();
-			IPv4Address dstIp = ipv4.getDestinationAddress();
+			IPv4Address srcIp = ipv4.getSourceAddress();			// client IP
+			IPv4Address dstIp = ipv4.getDestinationAddress();		// server IP
 			
 			if(ipv4.getProtocol() == IpProtocol.TCP) {
 				TCP tcp = (TCP) ipv4.getPayload();
 				
-				TransportPort dstPort = tcp.getDestinationPort();
-				TransportPort srcPort = tcp.getSourcePort();
-				
+				TransportPort srcPort = tcp.getSourcePort();		// client port
+				TransportPort dstPort = tcp.getDestinationPort();	// server port
+
+				/* get http header */
 				Data dt = (Data)tcp.getPayload();
 				byte[] txt = dt.getData();
-				String headerHttp = new String (txt);
-					
+				String headerHttp = new String(txt);
 				/* divisao da string */
 				String arr[] = headerHttp.split(" ", 3);
 				String method = arr[0];
+				
+				HTTP http = new HTTP();
+				
+				if(method.compareTo("HEAD") == 0) {
+					http.setHTTPMethod(HTTPMethod.HEAD);
+				} else if(method.compareTo("GET") == 0) {
+					http.setHTTPMethod(HTTPMethod.GET);
+				} else {
+					http.setHTTPMethod(HTTPMethod.NONE);
+				}
 					
-				if(method.compareTo("HEAD") == 0 || method.compareTo("GET") == 0) {
+				if(http.getHTTPMethod() == HTTPMethod.HEAD) {
 					String uri = arr[1];
 					String resto = arr[2];
+
+					logger.info("--- Novo HEAD ---");
+					logger.info("Method: " + method);
+					logger.info("URI: " + uri);
+					logger.info("Resto: " + resto);
+					logger.info("Metodo: " + http.getHTTPMethod());
+					logger.info("-----------------");
+					
+					Set<Request> requests = new HashSet<Request>();
+					
+					Request novoRequest = new Request(uri, srcIp, srcPort);
+					
+					if(requests.add(novoRequest) == true) {						// se ainda nao estava na lista
+						// cria um novo fluxo
 						
-					System.out.println("-----------------");
-					System.out.println("Method: " + method);
-					System.out.println("URI: " + uri);
-					System.out.println("Resto: " + resto);
-					System.out.println("-----------------");
+						OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
+						OFActions actions = my13Factory.actions();
+						OFOxms oxms = my13Factory.oxms();
+						
+						List<OFAction> actionsTo = new ArrayList<OFAction>();
+						
+						OFActionSetField setDstIp = actions.buildSetField()
+													.setField(oxms.buildIpv4Dst()
+													.setValue(srcIp)
+													.build()).build();
+						
+						OFActionSetField setDstMac = actions.buildSetField()
+													 .setField(oxms.buildEthDst()
+													 .setValue(srcMac)
+													 .build()).build();
+						
+						if(srcIp == ipUser1) {
+							userPort = u1Port;
+						} else if(srcIp == ipUser2) {
+							userPort = u2Port;
+						} else if(srcIp == ipUser3) {
+							userPort = u3Port;
+						}
+						
+						OFActionOutput outputClient = actions.output(OFPort.of(userPort), Integer.MAX_VALUE);
+						
+						actionsTo.add(setDstIp);
+						actionsTo.add(setDstMac);
+						actionsTo.add(outputClient);
+						
+						OFFlowAdd flowToTCP = fluxoTCP(createMatchFromPacket(sw, dstPort, cntx, dstIp, srcIp), my13Factory, actionsTo);
+			
+						sw.write(flowToTCP);
+						logger.info("Novo fluxo instalado\n");
+						
+						return Command.CONTINUE;
+					} else {
+						// agrega com fluxo ja existente
+						// ver duplicateUDP
+						
+						return Command.STOP;
+					}
+				} else {
+					return Command.CONTINUE;
 				}
 			}
 		}
-		
 		return Command.CONTINUE;
 	}
+	
+	private OFFlowAdd fluxoTCP(Match match, OFFactory myFactory, List<OFAction> actions) {
+		Set<OFFlowModFlags> flags = new HashSet<>();
+		flags.add(OFFlowModFlags.SEND_FLOW_REM);
+		
+		OFFlowAdd flowToTCP = myFactory
+							  .buildFlowAdd()
+							  .setActions(actions)
+							  .setBufferId(OFBufferId.NO_BUFFER)
+							  .setIdleTimeout(1)
+							  .setHardTimeout(0)
+							  .setMatch(match)
+							  .setCookie(U64.of(1L << 59))
+							  .setPriority(FlowModUtils.PRIORITY_HIGH)
+							  .build();
+		return flowToTCP;
+	}
+	
+	private Match createMatchFromPacket(IOFSwitch sw, TransportPort port, FloodlightContext cntx, IPv4Address srcIp, IPv4Address dstIp) {
+		Match.Builder mb = sw.getOFFactory().buildMatch();
+		
+		mb.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+			.setExact(MatchField.IPV4_SRC, dstIp) // ip server
+			.setExact(MatchField.IPV4_DST, srcIp) // ip client
+			.setExact(MatchField.IP_PROTO, IpProtocol.TCP)
+			.setExact(MatchField.TCP_DST, port);
+	
+		return mb.build();
+	}
 }
+
+class Request {
+	String video;
+	IPv4Address receiverAddress;
+	TransportPort receiverPort;
+	
+	Request(String video, IPv4Address receiverAddress, TransportPort receiverPort) {
+		this.video = video;
+		this.receiverAddress = receiverAddress;
+		this.receiverPort = receiverPort;
+	}
+}
+
 
