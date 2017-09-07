@@ -163,13 +163,33 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 					logger.info("Metodo: " + http.getHTTPMethod());
 					logger.info("-----------------");
 					
-					Set<Request> requests = new HashSet<Request>();
+					if(srcIp == ipUser1) {
+                        userPort = u1Port;
+                    } else if(srcIp == ipUser2) {
+                        userPort = u2Port;
+                    } else if(srcIp == ipUser3) {
+                        userPort = u3Port;
+                    }
 					
-					Request novoRequest = new Request(uri, srcIp, srcPort);
+					List<Request> requests = new ArrayList<Request>();            // lista com as informações dos clientes
+					List<String> videosInTraffic = new ArrayList<String>();       // lista com os videos trafegando
 					
-					if(requests.add(novoRequest) == true) {						// se ainda nao estava na lista
-						// cria um novo fluxo
+					Request novoRequest = new Request(uri, srcIp, userPort);
+					
+					if(videosInTraffic.contains(uri) == false) {				  // se ainda nao estava na lista
+						/* cria um novo fluxo */
+					    
+					    videosInTraffic.add(uri);
 						
+					    /* Provavelmente, aqui dentro desse if, vai ficar apenas:
+					     * request.add(novoRequest);
+					     * logger.info("Novo request identificado!\n");
+					     * return Command.CONTINUE; 
+					     * 
+					     * pois nao é necessario criar um fluxo para uma transmissao nova,
+					     * apenas para a agregação de dois fluxos.
+					     */
+					    
 						OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
 						OFActions actions = my13Factory.actions();
 						OFOxms oxms = my13Factory.oxms();
@@ -186,14 +206,6 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 						                             .setValue(srcMac)
 						                             .build()).build();    			
 						
-						if(srcIp == ipUser1) {
-							userPort = u1Port;
-						} else if(srcIp == ipUser2) {
-							userPort = u2Port;
-						} else if(srcIp == ipUser3) {
-							userPort = u3Port;
-						}
-						
 						OFActionOutput outputClient = actions.output(OFPort.of(userPort), Integer.MAX_VALUE);
 						
 						actionsTo.add(setDstIp);
@@ -202,14 +214,64 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 						
 						OFFlowAdd flowToTCP = fluxoTCP(createMatchFromPacket(sw, dstPort, cntx, dstIp, srcIp), my13Factory, actionsTo);
 			
+						requests.add(novoRequest);
 						sw.write(flowToTCP);
 						logger.info("Novo fluxo instalado\n");
 						
 						return Command.CONTINUE;
 					} else {
-						// agrega com fluxo ja existente
-						// ver duplicateUDP
+						/* agrega com fluxo ja existente */
+					    
+					    IPv4Address originalIp;
+					    MacAddress originalMac;
+					    int originalPort;
+					    
+					    /* TODO:
+					     * Busca na lista 'requests' qual o IP, MAC e porta do cliente original 
+					     * ver: https://www.java2novice.com/java-collections-and-util/collections/binary-search/
+					     */
 						
+					    OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
+					    OFActions actions = my13Factory.actions();
+					    OFOxms oxms = my13Factory.oxms();
+						
+					    List<OFAction> actionsTo = new ArrayList<OFAction>();
+					    
+					    OFActionSetField setDstIp1 = actions.buildSetField()
+					                                 .setField(oxms.buildIpv4Dst()
+					                                 .setValue(srcIp)
+					                                 .build()).build();
+					    
+					    OFActionSetField setDstMac1 = actions.buildSetField()
+					                                  .setField(oxms.buildEthDst()
+					                                  .setValue(srcMac)
+					                                  .build()).build();
+					    
+					    OFActionSetField setDstIp2 = actions.buildSetField()
+					                                 .setField(oxms.buildIpv4Dst()
+					                                 .setValue(originalIp)
+					                                 .build()).build();
+					    
+					    OFActionSetField setDstMac2 = actions.buildSetField()
+					                                  .setField(oxms.buildEthDst()
+					                                  .setValue(originalMac)
+					                                  .build()).build();
+
+					    OFActionOutput outputClient1 = actions.output(OFPort.of(userPort), Integer.MAX_VALUE);
+					    OFActionOutput outputClient2 = actions.output(OFPort.of(originalPort), Integer.MAX_VALUE);
+					    
+					    actionsTo.add(setDstIp1);
+					    actionsTo.add(setDstMac1);
+					    actionsTo.add(outputClient1);
+					    actionsTo.add(setDstIp2);
+					    actionsTo.add(setDstMac2);
+					    actionsTo.add(outputClient2);
+					    
+					    OFFlowAdd flowToTCP = fluxoTCP(createMatchFromPacket(sw, dstPort, cntx, dstIp, srcIp), my13Factory, actionsTo);
+					    
+					    sw.write(flowToTCP);
+					    logger.info("Fluxos agregados para o request " + uri);
+					    
 						return Command.STOP;
 					}
 				} else {
@@ -251,16 +313,51 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 }
 
 class Request {
-	String video;
-	IPv4Address receiverAddress;
-	TransportPort receiverPort;
+	private String video;
+	private IPv4Address receiverAddress;
+	private int receiverPort;
 	
-	Request(String video, IPv4Address receiverAddress, TransportPort receiverPort) {
+	public Request(String video, IPv4Address receiverAddress, int receiverPort) {
 		this.video = video;
 		this.receiverAddress = receiverAddress;
 		this.receiverPort = receiverPort;
 	}
+	
+	public String getVideoId() {
+	    return video;
+	}
+	
+	public IPv4Address getIpAddress() {
+	    return receiverAddress;
+	}
+	
+	public int getPort() {
+	    return receiverPort;
+	}
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
