@@ -267,7 +267,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 					    actionsTo.add(setDstMac2);
 					    actionsTo.add(outputClient2);
 					    
-					    OFFlowAdd flowToTCP = fluxoTCP(createMatchFromPacket(sw, dstPort, cntx, dstIp, srcIp), my13Factory, actionsTo);
+					    OFFlowAdd flowToTCP = fluxoTCP(createMatchFromPacket(sw, dstPort, cntx, originalIp, dstIp), my13Factory, actionsTo);
 					    
 					    sw.write(flowToTCP);
 					    logger.info("Fluxos agregados para o request " + uri);
@@ -335,26 +335,6 @@ class Request {
 	    return receiverPort;
 	}
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
