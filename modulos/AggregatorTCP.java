@@ -1,11 +1,13 @@
 package net.floodlightcontroller.aggregator;
 
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Map;
 import java.util.List;
 import java.util.Set;
-import java.io.IOException;
-import java.io.PrintWriter;
+//import java.io.IOException;
+//import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.HashSet;
 
@@ -56,7 +58,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 	private static Logger logger;
     public static final TransportPort HTTP_PORT = TransportPort.of(5001);
 	
-	private IPv4Address ipServer1 = IPv4Address.of("10.0.0.1");
+	//private IPv4Address ipServer1 = IPv4Address.of("10.0.0.1");
 	private IPv4Address ipUser1 = IPv4Address.of("10.0.0.2");
 	private IPv4Address ipUser2 = IPv4Address.of("10.0.0.3");
 	private IPv4Address ipUser3 = IPv4Address.of("10.0.0.4");
@@ -66,11 +68,11 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 	//private MacAddress macUser2 = MacAddress.of("00:00:00:00:00:03");
 	//private MacAddress macUser3 = MacAddress.of("00:00:00:00:00:04");
 	
-	private int s1Port = 4;
+	//private int s1Port = 4;
 	private int u1Port = 1;
 	private int u2Port = 2;
 	private int u3Port = 3;
-	int userPort;
+	int userPort = -1;
 	
 	@Override
 	public String getName() {
@@ -120,7 +122,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		
 		MacAddress srcMac = eth.getSourceMACAddress();				// client mac
-		MacAddress dstMac = eth.getDestinationMACAddress();			// server mac
+		//MacAddress dstMac = eth.getDestinationMACAddress();		// server mac
 		
 		if(eth.getEtherType() == EthType.IPv4) {
 			IPv4 ipv4 = (IPv4) eth.getPayload();
@@ -131,7 +133,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 			if(ipv4.getProtocol() == IpProtocol.TCP) {
 				TCP tcp = (TCP) ipv4.getPayload();
 				
-				TransportPort srcPort = tcp.getSourcePort();		// client port
+				//TransportPort srcPort = tcp.getSourcePort();		// client port
 				TransportPort dstPort = tcp.getDestinationPort();	// server port
 
 				/* get http header */
@@ -154,13 +156,13 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 					
 				if(http.getHTTPMethod() == HTTPMethod.HEAD) {
 					String uri = arr[1];
-					String resto = arr[2];
+					//String resto = arr[2];
 
 					logger.info("--- Novo HEAD ---");
 					logger.info("Method: " + method);
 					logger.info("URI: " + uri);
-					logger.info("Resto: " + resto);
-					logger.info("Metodo: " + http.getHTTPMethod());
+					//logger.info("Resto: " + resto);
+					//logger.info("Metodo: " + http.getHTTPMethod());
 					logger.info("-----------------");
 					
 					if(srcIp == ipUser1) {
@@ -174,12 +176,10 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 					List<Request> requests = new ArrayList<Request>();            // lista com as informações dos clientes
 					List<String> videosInTraffic = new ArrayList<String>();       // lista com os videos trafegando
 					
-					Request novoRequest = new Request(uri, srcIp, userPort);
+					Request novoRequest = new Request(uri, srcMac, srcIp, userPort);
 					
 					if(videosInTraffic.contains(uri) == false) {				  // se ainda nao estava na lista
 						/* cria um novo fluxo */
-					    
-					    videosInTraffic.add(uri);
 						
 					    /* Provavelmente, aqui dentro desse if, vai ficar apenas:
 					     * request.add(novoRequest);
@@ -214,23 +214,30 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 						
 						OFFlowAdd flowToTCP = fluxoTCP(createMatchFromPacket(sw, dstPort, cntx, dstIp, srcIp), my13Factory, actionsTo);
 			
+						videosInTraffic.add(uri);
 						requests.add(novoRequest);
 						sw.write(flowToTCP);
-						logger.info("Novo fluxo instalado\n");
+						logger.info("\nRequisição nova! URI: " + uri + "\n");
 						
 						return Command.CONTINUE;
 					} else {
 						/* agrega com fluxo ja existente */
 					    
-					    IPv4Address originalIp;
-					    MacAddress originalMac;
-					    int originalPort;
-					    
-					    /* TODO:
-					     * Busca na lista 'requests' qual o IP, MAC e porta do cliente original 
-					     * ver: https://www.java2novice.com/java-collections-and-util/collections/binary-search/
+					    /* busca na lista o index do elemento que tem o request original
+					     * https://www.java2novice.com/java-collections-and-util/collections/binary-search/
 					     */
+					    
+					    int index = -1;
+					    Request searchKey = new Request(uri);
+					    index = Collections.binarySearch(requests, searchKey, new Comparador());
+					    if(index != -1) {
+					        logger.info("URI encontrado na posição " + index);
+					    }
+					    IPv4Address originalIp = requests.get(index).getIpAddress();
+					    MacAddress originalMac = requests.get(index).getMacAddress();
+					    int originalPort = requests.get(index).getPort();
 						
+					    /* Inicio montagem do fluxo */
 					    OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
 					    OFActions actions = my13Factory.actions();
 					    OFOxms oxms = my13Factory.oxms();
@@ -290,7 +297,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 		                      .buildFlowAdd()
 		                      .setActions(actions)
 		                      .setBufferId(OFBufferId.NO_BUFFER)
-		                      .setIdleTimeout(1)
+		                      .setIdleTimeout(13)
 		                      .setHardTimeout(0)
 		                      .setMatch(match)
 		                      .setCookie(U64.of(1L << 59))
@@ -314,17 +321,27 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 
 class Request {
 	private String video;
+	private MacAddress receiverMac;
 	private IPv4Address receiverAddress;
 	private int receiverPort;
 	
-	public Request(String video, IPv4Address receiverAddress, int receiverPort) {
+	public Request(String video, MacAddress receiverMac, IPv4Address receiverAddress, int receiverPort) {
 		this.video = video;
+		this.receiverMac = receiverMac;
 		this.receiverAddress = receiverAddress;
 		this.receiverPort = receiverPort;
 	}
 	
+	public Request(String video) {
+	    this.video = video;
+	}
+	
 	public String getVideoId() {
 	    return video;
+	}
+	
+	public MacAddress getMacAddress() {
+	    return receiverMac;
 	}
 	
 	public IPv4Address getIpAddress() {
@@ -335,6 +352,36 @@ class Request {
 	    return receiverPort;
 	}
 }
+
+class Comparador implements Comparator<Request> {
+    public int compare(Request e1, Request e2) {
+        if(e1.getVideoId() == e2.getVideoId()) {
+            return 1;  
+        } else {
+            return 0;
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
