@@ -57,22 +57,28 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 	private IFloodlightProviderService floodlightProvider;
 	private static Logger logger;
     public static final TransportPort HTTP_PORT = TransportPort.of(5001);
+    public static final TransportPort TCP_TRANSP_PORT = TransportPort.of(47214);
+    
+    /*  Listas de requisições */
+    protected List<Request> requests;
+    protected List<String> videosInTraffic;
 	
-	//private IPv4Address ipServer1 = IPv4Address.of("10.0.0.1");
+    /* Endereços */
+	private IPv4Address ipServer1 = IPv4Address.of("10.0.0.1");
 	private IPv4Address ipUser1 = IPv4Address.of("10.0.0.2");
 	private IPv4Address ipUser2 = IPv4Address.of("10.0.0.3");
 	private IPv4Address ipUser3 = IPv4Address.of("10.0.0.4");
+	private MacAddress macServer1 = MacAddress.of("00:00:00:00:00:01");
+	private MacAddress macUser1 = MacAddress.of("00:00:00:00:00:02");
+	private MacAddress macUser2 = MacAddress.of("00:00:00:00:00:03");
+	private MacAddress macUser3 = MacAddress.of("00:00:00:00:00:04");
 	
-	//private MacAddress macServer1 = MacAddress.of("00:00:00:00:00:01");
-	//private MacAddress macUser1 = MacAddress.of("00:00:00:00:00:02");
-	//private MacAddress macUser2 = MacAddress.of("00:00:00:00:00:03");
-	//private MacAddress macUser3 = MacAddress.of("00:00:00:00:00:04");
-	
-	//private int s1Port = 4;
+	/* Portas */
+	private int s1Port = 4;
 	private int u1Port = 1;
 	private int u2Port = 2;
 	private int u3Port = 3;
-	int userPort = -1;
+	private int userPort = -1;
 	
 	@Override
 	public String getName() {
@@ -86,7 +92,6 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 
 	@Override
 	public boolean isCallbackOrderingPostreq(OFType type, String name) {
-		// TODO Auto-generated method stub
 		return false;
 	}
 
@@ -109,6 +114,10 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 	public void init(FloodlightModuleContext context) throws FloodlightModuleException {
 		floodlightProvider = context.getServiceImpl(IFloodlightProviderService.class);
 		logger = LoggerFactory.getLogger(AggregatorTCP.class);
+		
+		/* Criação das listas */
+		requests = new ArrayList<Request>();            // lista com as informações dos clientes
+        videosInTraffic = new ArrayList<String>();      // lista com os videos trafegando
 	}
 
 	@Override
@@ -122,7 +131,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 		Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		
 		MacAddress srcMac = eth.getSourceMACAddress();				// client mac
-		//MacAddress dstMac = eth.getDestinationMACAddress();		// server mac
+		MacAddress dstMac = eth.getDestinationMACAddress();		// server mac
 		
 		if(eth.getEtherType() == EthType.IPv4) {
 			IPv4 ipv4 = (IPv4) eth.getPayload();
@@ -130,10 +139,18 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 			IPv4Address srcIp = ipv4.getSourceAddress();			// client IP
 			IPv4Address dstIp = ipv4.getDestinationAddress();		// server IP
 			
+			if(srcIp.equals(ipUser1) == true) {
+                userPort = u1Port;
+            } else if(srcIp.equals(ipUser2) == true) {
+                userPort = u2Port;
+            } else if(srcIp.equals(ipUser3) == true) {
+                userPort = u3Port;
+            }
+			
 			if(ipv4.getProtocol() == IpProtocol.TCP) {
 				TCP tcp = (TCP) ipv4.getPayload();
 				
-				//TransportPort srcPort = tcp.getSourcePort();		// client port
+				TransportPort srcPort = tcp.getSourcePort();		// client port
 				TransportPort dstPort = tcp.getDestinationPort();	// server port
 
 				/* get http header */
@@ -154,9 +171,9 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 					http.setHTTPMethod(HTTPMethod.NONE);
 				}
 					
-				if(http.getHTTPMethod() == HTTPMethod.HEAD) {
+				if(http.getHTTPMethod() == HTTPMethod.HEAD) { 
 					String uri = arr[1];
-					//String resto = arr[2];
+					String resto = arr[2];
 
 					logger.info("--- Novo HEAD ---");
 					logger.info("Method: " + method);
@@ -165,59 +182,15 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 					//logger.info("Metodo: " + http.getHTTPMethod());
 					logger.info("-----------------");
 					
-					if(srcIp == ipUser1) {
-                        userPort = u1Port;
-                    } else if(srcIp == ipUser2) {
-                        userPort = u2Port;
-                    } else if(srcIp == ipUser3) {
-                        userPort = u3Port;
-                    }
-					
-					List<Request> requests = new ArrayList<Request>();            // lista com as informações dos clientes
-					List<String> videosInTraffic = new ArrayList<String>();       // lista com os videos trafegando
-					
 					Request novoRequest = new Request(uri, srcMac, srcIp, userPort);
 					
-					if(videosInTraffic.contains(uri) == false) {				  // se ainda nao estava na lista
-						/* cria um novo fluxo */
-						
-					    /* Provavelmente, aqui dentro desse if, vai ficar apenas:
-					     * request.add(novoRequest);
-					     * logger.info("Novo request identificado!\n");
-					     * return Command.CONTINUE; 
-					     * 
-					     * pois nao é necessario criar um fluxo para uma transmissao nova,
-					     * apenas para a agregação de dois fluxos.
-					     */
-					    
-						OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
-						OFActions actions = my13Factory.actions();
-						OFOxms oxms = my13Factory.oxms();
-						
-						List<OFAction> actionsTo = new ArrayList<OFAction>();
-						
-						OFActionSetField setDstIp = actions.buildSetField()
-						                            .setField(oxms.buildIpv4Dst()
-						                            .setValue(srcIp)
-						                            .build()).build();
-						
-						OFActionSetField setDstMac = actions.buildSetField()
-						                             .setField(oxms.buildEthDst()
-						                             .setValue(srcMac)
-						                             .build()).build();    			
-						
-						OFActionOutput outputClient = actions.output(OFPort.of(userPort), Integer.MAX_VALUE);
-						
-						actionsTo.add(setDstIp);
-						actionsTo.add(setDstMac);
-						actionsTo.add(outputClient);
-						
-						OFFlowAdd flowToTCP = fluxoTCP(createMatchFromPacket(sw, dstPort, cntx, dstIp, srcIp), my13Factory, actionsTo);
+					if(videosInTraffic.contains(uri) == false) {
+						/* se ainda nao estava na lista, cria um novo fluxo */
 			
 						videosInTraffic.add(uri);
 						requests.add(novoRequest);
-						sw.write(flowToTCP);
-						logger.info("\nRequisição nova! URI: " + uri + "\n");
+						logger.info("Requisição nova! URI: " + uri + "\n");
+						logger.info("Lista na posição 0: " + requests.get(0).getVideoId() + ", " + requests.get(0).getIpAddress() + ", " + requests.get(0).getPort() + "\n");
 						
 						return Command.CONTINUE;
 					} else {
@@ -232,6 +205,8 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 					    index = Collections.binarySearch(requests, searchKey, new Comparador());
 					    if(index != -1) {
 					        logger.info("URI encontrado na posição " + index);
+					    } else {
+					        logger.info("Index nao encontrado!");
 					    }
 					    IPv4Address originalIp = requests.get(index).getIpAddress();
 					    MacAddress originalMac = requests.get(index).getMacAddress();
@@ -274,7 +249,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 					    actionsTo.add(setDstMac2);
 					    actionsTo.add(outputClient2);
 					    
-					    OFFlowAdd flowToTCP = fluxoTCP(createMatchFromPacket(sw, dstPort, cntx, originalIp, dstIp), my13Factory, actionsTo);
+					    OFFlowAdd flowToTCP = fluxoTCP(createMatchFromPacket(sw, TCP_TRANSP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo); // qual port passar?
 					    
 					    sw.write(flowToTCP);
 					    logger.info("Fluxos agregados para o request " + uri);
@@ -297,7 +272,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 		                      .buildFlowAdd()
 		                      .setActions(actions)
 		                      .setBufferId(OFBufferId.NO_BUFFER)
-		                      .setIdleTimeout(13)
+		                      .setIdleTimeout(10)
 		                      .setHardTimeout(0)
 		                      .setMatch(match)
 		                      .setCookie(U64.of(1L << 59))
