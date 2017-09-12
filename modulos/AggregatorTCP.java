@@ -153,7 +153,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 		
         Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
 		
-        MacAddress srcMac = eth.getSourceMACAddress();				// MAC cliente
+        MacAddress srcMac = eth.getSourceMACAddress();              // MAC cliente
         MacAddress dstMac = eth.getDestinationMACAddress();         // MAC server
 		
         if(eth.getEtherType() == EthType.IPv4) {
@@ -162,8 +162,8 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
             
             IPv4 ipv4 = (IPv4) eth.getPayload();
 			
-            IPv4Address srcIp = ipv4.getSourceAddress();			// IP cliente
-            IPv4Address dstIp = ipv4.getDestinationAddress();		// IP server
+            IPv4Address srcIp = ipv4.getSourceAddress();            // IP cliente
+            IPv4Address dstIp = ipv4.getDestinationAddress();       // IP server
 			
             if(srcIp.equals(ipUser1) == true) {                     // Porta do Switch para cada usuário
                 userPort = u1Port;
@@ -224,7 +224,9 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                         videosInTraffic.add(uri);
                         requests.add(novoRequest);
                         logger.info("Requisição nova! URI: " + uri + "\n");
-                        logger.info("Lista na posição 0: " + requests.get(0).getVideoId() + ", " + requests.get(0).getIpAddress() + ", " + requests.get(0).getPort() + "\n");
+                        logger.info("Lista na posição 0: " + requests.get(0).getVideoId() 
+                                                    + ", " + requests.get(0).getIpAddress() 
+                                                    + ", " + requests.get(0).getPort() + "\n");
 						
                         return Command.CONTINUE;
                     } else {
