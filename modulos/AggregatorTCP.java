@@ -84,7 +84,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
     /*  Listas de requisições */
     protected List<Request> requests;
     protected List<String> videosInTraffic;
-    protected List<String> gets;
+    protected List<Request> gets;
 	
     /* Endereços */
     //private IPv4Address ipServer1 = IPv4Address.of("10.0.0.1");
@@ -141,7 +141,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         /* Criação das listas */
         requests = new ArrayList<Request>();                        // Lista com as informações dos clientes
         videosInTraffic = new ArrayList<String>();                  // Lista com os videos trafegando
-        gets = new ArrayList<String>();                             // Lista para administrar os gets
+        gets = new ArrayList<Request>();                            // Lista para administrar os gets
     }
 
     @Override
@@ -188,6 +188,12 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                 /* Divisão do header em 3 partes: Método, URI e resto */
                 String arr[] = headerHttp.split(" ", 3);
                 String method = arr[0];
+                
+                /* TODO: O URI deve ser decomposto em mais 3 partes,
+                 * /get/35/video.mp4blabla 
+                 * /pt1/pt2/pt3
+                 * para utilizar a pt3 como id do video
+                 */
 				
                 HTTP http = new HTTP();
 				
@@ -202,15 +208,16 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                 
                 if(http.getHTTPMethod() == HTTPMethod.HEAD) {
                     
-                    /* Pacote HTT com método HEAD, informando o vídeo que será requisitado */
+                    /* Pacote HTTP com método HEAD, informando o vídeo que será requisitado */
                     
-                    gets.add(arr[1]);
+                    Request novoHead = new Request(arr[1], userPort);
+                    gets.add(novoHead);
                     
                     /* Adiciona na lista o video que será requisitado
                      * para comparar com o GET posteriormente 
                      */
                     
-                    logger.info("--- HEAD recebido ---");
+                    logger.info("---------- HEAD recebido ----------");
                     logger.info("URI: " + arr[1]);
                     
                     return Command.CONTINUE;
@@ -229,30 +236,28 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                     String uri = arr[1];
                     //String resto = arr[2];
                     
-                    if(gets.get(0).equals(uri)) {
+                    if(gets.get(0).getUri().equals(uri) && gets.get(0).getPort() == userPort) {
                         
                         /* Se for o GET correspondente ao HEAD */
-                        
-                        gets.remove(0);
                             
-                        logger.info("--- GET do HEAD recebido ---");
+                        logger.info("--- GET correspondente recebido ---");
                         //logger.info("Method: " + method);
                         logger.info("URI: " + uri);
                         //logger.info("Resto: " + resto);
-                        logger.info("-----------------");
-    					
-                        Request novoRequest = new Request(uri, srcMac, srcIp, userPort);
+                        logger.info("-----------------------------------");
     					
                         if(videosInTraffic.contains(uri) == false) {
                             
                             /* Se ainda havia uma transferência do vídeo requisitado */
     			
+                            Request novoRequest = new Request(uri, srcMac, srcIp, userPort);
+                            
                             videosInTraffic.add(uri);
                             requests.add(novoRequest);
                             logger.info("Requisição nova! URI: " + uri + "\n");
                             /*logger.info("Lista na posição 0: " + requests.get(0).getVideoId() 
-                                                        + ", " + requests.get(0).getIpAddress() 
-                                                        + ", " + requests.get(0).getPort() + "\n"); */
+                                                                 + ", " + requests.get(0).getIpAddress() 
+                                                                 + ", " + requests.get(0).getPort() + "\n"); */
     						
                             return Command.CONTINUE;
                         } else {
@@ -274,86 +279,91 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                             MacAddress originalMac = requests.get(index).getMacAddress();               // Recupera MAC do primeiro usuário
                             int originalPort = requests.get(index).getPort();                           // Recupera Porta do primeiro usuário
     						
-                            /* Inicio da montagem dos fluxos */
-                            OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
-                            OFActions actions = my13Factory.actions();
-                            OFOxms oxms = my13Factory.oxms();
-    						
-                            List<OFAction> actionsFrom = new ArrayList<OFAction>();                     // Lista de actions para o fluxo do server para o cliente
-                            List<OFAction> actionsTo = new ArrayList<OFAction>();                       // Lista de actions para o fluxo do cliente para o server (ACK)
-    					    
-                            /* Montagem do fluxo server -> cliente */
-                            /* Set do IP do segundo usuário */
-                            OFActionSetField setDstIpC1 = actions.buildSetField()
-                                                         .setField(oxms.buildIpv4Dst()
-                                                         .setValue(srcIp)
-                                                         .build()).build();
-    					    
-                            /* Set do MAC do segundo usuário */
-                            OFActionSetField setDstMacC1 = actions.buildSetField()
-                                                          .setField(oxms.buildEthDst()
-                                                          .setValue(srcMac)
-                                                          .build()).build();
-    					    
-                            /* Set do IP do primeiro usuário */
-                            OFActionSetField setDstIpC2 = actions.buildSetField()
-                                                         .setField(oxms.buildIpv4Dst()
-                                                         .setValue(originalIp)
-                                                         .build()).build();
-    					    
-                            /* Set do MAC do primeiro usuário */
-                            OFActionSetField setDstMacC2 = actions.buildSetField()
-                                                          .setField(oxms.buildEthDst()
-                                                          .setValue(originalMac)
-                                                          .build()).build();
-    
-                            /* Set das portas de saída do switch para os usuários */
-                            OFActionOutput outputClient1 = actions.output(OFPort.of(userPort), Integer.MAX_VALUE);      // Porta do segundo usuário
-                            OFActionOutput outputClient2 = actions.output(OFPort.of(originalPort), Integer.MAX_VALUE);  // Porta do primeiro usuário
-    					    
-                            actionsFrom.add(setDstIpC1);
-                            actionsFrom.add(setDstMacC1);
-                            actionsFrom.add(outputClient1);
-                            actionsFrom.add(setDstIpC2);
-                            actionsFrom.add(setDstMacC2);
-                            actionsFrom.add(outputClient2);
-    					    
-                            OFFlowAdd flowFromTCP = fluxoTCP(createMatchFromPacket(sw, httpTranspPort, cntx, originalIp, dstIp), my13Factory, actionsFrom);
-                            
-                            /* Montagem do fluxo cliente -> server (ACK), apenas o primeiro usuario responde */
-                            /* Set do IP do server */
-                            OFActionSetField setDstIpS1 = actions.buildSetField()
-                                                         .setField(oxms.buildIpv4Dst()
-                                                         .setValue(dstIp)    // IP do server
-                                                         .build()).build();
-                            
-                            /* Set do MAC do server */
-                            OFActionSetField setDstMacS1 = actions.buildSetField()
-                                                          .setField(oxms.buildEthDst()
-                                                          .setValue(dstMac)
-                                                          .build()).build();
-                            
-                            /* Set da porta de saída do switch para o server */
-                            OFActionOutput outputServer1 = actions.output(OFPort.of(s1Port), Integer.MAX_VALUE);
-                            
-                            actionsTo.add(setDstIpS1);
-                            actionsTo.add(setDstMacS1);
-                            actionsTo.add(outputServer1);
-                                                        
-                            OFFlowAdd flowToTCP = fluxoTCP(createMatchToPacket(sw, HTTP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo);
-    					    
-                            /* Escrita dos fluxos na tabela de fluxos */
-                            sw.write(flowFromTCP);
-                            sw.write(flowToTCP);
-                            logger.info("Fluxos agregados para o request " + uri);
-                            logger.info("Receptores nas portas: " + originalPort + " e " + userPort);
-    					    
-                            /*  Barra o pacote para ele nao seguir para o servidor,
-                             *  pois já sera transmitido para o segundo usuário pelo
-                             *  fluxo que foi instalado, que possui saida para o primeiro
-                             *  e segundo usuário
-                             */
-                            return Command.STOP;
+                            if(originalIp.equals(srcIp) == false) {
+                                /* Inicio da montagem dos fluxos */
+                                OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
+                                OFActions actions = my13Factory.actions();
+                                OFOxms oxms = my13Factory.oxms();
+        						
+                                List<OFAction> actionsFrom = new ArrayList<OFAction>();                     // Lista de actions para o fluxo do server para o cliente
+                                List<OFAction> actionsTo = new ArrayList<OFAction>();                       // Lista de actions para o fluxo do cliente para o server (ACK)
+        					    
+                                /* Montagem do fluxo server -> cliente */
+                                /* Set do IP do segundo usuário */
+                                OFActionSetField setDstIpC1 = actions.buildSetField()
+                                                             .setField(oxms.buildIpv4Dst()
+                                                             .setValue(srcIp)
+                                                             .build()).build();
+        					    
+                                /* Set do MAC do segundo usuário */
+                                OFActionSetField setDstMacC1 = actions.buildSetField()
+                                                              .setField(oxms.buildEthDst()
+                                                              .setValue(srcMac)
+                                                              .build()).build();
+        					    
+                                /* Set do IP do primeiro usuário */
+                                OFActionSetField setDstIpC2 = actions.buildSetField()
+                                                             .setField(oxms.buildIpv4Dst()
+                                                             .setValue(originalIp)
+                                                             .build()).build();
+        					    
+                                /* Set do MAC do primeiro usuário */
+                                OFActionSetField setDstMacC2 = actions.buildSetField()
+                                                              .setField(oxms.buildEthDst()
+                                                              .setValue(originalMac)
+                                                              .build()).build();
+        
+                                /* Set das portas de saída do switch para os usuários */
+                                OFActionOutput outputClient1 = actions.output(OFPort.of(userPort), Integer.MAX_VALUE);      // Porta do segundo usuário
+                                OFActionOutput outputClient2 = actions.output(OFPort.of(originalPort), Integer.MAX_VALUE);  // Porta do primeiro usuário
+        					    
+                                actionsFrom.add(setDstIpC1);
+                                actionsFrom.add(setDstMacC1);
+                                actionsFrom.add(outputClient1);
+                                actionsFrom.add(setDstIpC2);
+                                actionsFrom.add(setDstMacC2);
+                                actionsFrom.add(outputClient2);
+        					    
+                                OFFlowAdd flowFromTCP = fluxoTCP(createMatchFromPacket(sw, httpTranspPort, cntx, originalIp, dstIp), my13Factory, actionsFrom);
+                                
+                                /* Montagem do fluxo cliente -> server (ACK), apenas o primeiro usuario responde */
+                                /* Set do IP do server */
+                                OFActionSetField setDstIpS1 = actions.buildSetField()
+                                                             .setField(oxms.buildIpv4Dst()
+                                                             .setValue(dstIp)    // IP do server
+                                                             .build()).build();
+                                
+                                /* Set do MAC do server */
+                                OFActionSetField setDstMacS1 = actions.buildSetField()
+                                                              .setField(oxms.buildEthDst()
+                                                              .setValue(dstMac)
+                                                              .build()).build();
+                                
+                                /* Set da porta de saída do switch para o server */
+                                OFActionOutput outputServer1 = actions.output(OFPort.of(s1Port), Integer.MAX_VALUE);
+                                
+                                actionsTo.add(setDstIpS1);
+                                actionsTo.add(setDstMacS1);
+                                actionsTo.add(outputServer1);
+                                                            
+                                OFFlowAdd flowToTCP = fluxoTCP(createMatchToPacket(sw, HTTP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo);
+        					    
+                                /* Escrita dos fluxos na tabela de fluxos */
+                                sw.write(flowFromTCP);
+                                sw.write(flowToTCP);
+                                logger.info("Fluxos agregados para o request " + uri);
+                                logger.info("Receptores nas portas: " + originalPort + " e " + userPort);
+        					    
+                                /*  Barra o pacote para ele nao seguir para o servidor,
+                                 *  pois já sera transmitido para o segundo usuário pelo
+                                 *  fluxo que foi instalado, que possui saida para o primeiro
+                                 *  e segundo usuário
+                                 */
+                                return Command.STOP;
+                            } else {
+                                logger.info("GET repetido, fluxos nao agregados por ser o mesmo cliente.");
+                                return Command.CONTINUE;
+                            }
                         }
                     } else {
                         return Command.CONTINUE;
@@ -377,7 +387,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                               .buildFlowAdd()
                               .setActions(actions)
                               .setBufferId(OFBufferId.NO_BUFFER)
-                              .setIdleTimeout(10)
+                              .setIdleTimeout(100)
                               .setHardTimeout(0)
                               .setMatch(match)
                               .setCookie(U64.of(1L << 59))
@@ -398,7 +408,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
           .setExact(MatchField.IPV4_SRC, dstIp)             // IP server
           .setExact(MatchField.IPV4_DST, srcIp)             // IP cliente
           .setExact(MatchField.IP_PROTO, IpProtocol.TCP)
-          .setExact(MatchField.TCP_DST,  port);             // Porta de transmissão
+          .setExact(MatchField.TCP_DST,  port);             // porta de transmissao do cliente 1
 	
         return mb.build();
     }
@@ -441,12 +451,16 @@ class Request {
         this.receiverPort = receiverPort;
     }
 	
-    /* Getters */
     public Request(String video) {
         this.video = video;
     }
+    
+    public Request(String video, int receiverPort) {
+        this.video = video;
+        this.receiverPort = receiverPort;
+    }
 	
-    public String getVideoId() {
+    public String getUri() {
         return video;
     }
 	
@@ -471,7 +485,7 @@ class Comparador implements Comparator<Request> {
      */
     
     public int compare(Request e1, Request e2) {
-        if(e1.getVideoId() == e2.getVideoId()) {
+        if(e1.getUri() == e2.getUri()) {
             return 1;  
         } else {
             return 0;
