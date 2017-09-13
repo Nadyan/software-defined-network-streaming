@@ -188,12 +188,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                 /* Divisão do header em 3 partes: Método, URI e resto */
                 String arr[] = headerHttp.split(" ", 3);
                 String method = arr[0];
-                
-                /* TODO: O URI deve ser decomposto em mais 3 partes,
-                 * /get/35/video.mp4blabla 
-                 * /pt1/pt2/pt3
-                 * para utilizar a pt3 como id do video
-                 */
+                String videoId;
 				
                 HTTP http = new HTTP();
 				
@@ -210,17 +205,22 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                     
                     /* Pacote HTTP com método HEAD, informando o vídeo que será requisitado */
                     
-                    Request novoHead = new Request(arr[1], userPort);
-                    gets.add(novoHead);
-                    
                     /* Adiciona na lista o video que será requisitado
                      * para comparar com o GET posteriormente 
                      */
                     
+                    /* Pega apenas o id do video do URI */
+                    videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
+                    
                     logger.info("---------- HEAD recebido ----------");
                     logger.info("URI: " + arr[1]);
+                    logger.info("VideoId: " + videoId);
+                    
+                    Request novoHead = new Request(videoId, userPort);
+                    gets.add(novoHead);
                     
                     return Command.CONTINUE;
+                    
                 } else if(http.getHTTPMethod() == HTTPMethod.GET && gets.isEmpty() == false) {
                     /* Se for um GET de um HEAD anterior */
                     
@@ -234,32 +234,36 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                     TransportPort httpTranspPort = srcPort;         // porta do cliente que será enviado o video
                     
                     String uri = arr[1];
+                    videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
                     //String resto = arr[2];
                     
-                    if(gets.get(0).getUri().equals(uri) && gets.get(0).getPort() == userPort) {
+                    if(gets.get(0).getVideoId().equals(videoId) && gets.get(0).getPort() == userPort) {
                         
                         /* Se for o GET correspondente ao HEAD */
+                        
+                        // retirar a entrada da lista gets?
                             
                         logger.info("--- GET correspondente recebido ---");
                         //logger.info("Method: " + method);
                         logger.info("URI: " + uri);
-                        //logger.info("Resto: " + resto);
+                        logger.info("VideoId: " + videoId);
                         logger.info("-----------------------------------");
     					
-                        if(videosInTraffic.contains(uri) == false) {
+                        if(videosInTraffic.contains(videoId) == false) {
                             
                             /* Se ainda havia uma transferência do vídeo requisitado */
     			
-                            Request novoRequest = new Request(uri, srcMac, srcIp, userPort);
+                            Request novoRequest = new Request(videoId, srcMac, srcIp, userPort);
                             
-                            videosInTraffic.add(uri);
+                            videosInTraffic.add(videoId);
                             requests.add(novoRequest);
-                            logger.info("Requisição nova! URI: " + uri + "\n");
+                            logger.info("Requisição nova " + videoId + " de " + srcIp);
                             /*logger.info("Lista na posição 0: " + requests.get(0).getVideoId() 
                                                                  + ", " + requests.get(0).getIpAddress() 
                                                                  + ", " + requests.get(0).getPort() + "\n"); */
     						
                             return Command.CONTINUE;
+                            
                         } else {
                             
                             /*  Se o vídeo requisitado já estava sendo transmitido, agrega os dois fluxos
@@ -360,6 +364,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                  *  e segundo usuário
                                  */
                                 return Command.STOP;
+                                
                             } else {
                                 logger.info("GET repetido, fluxos nao agregados por ser o mesmo cliente.");
                                 return Command.CONTINUE;
@@ -460,7 +465,7 @@ class Request {
         this.receiverPort = receiverPort;
     }
 	
-    public String getUri() {
+    public String getVideoId() {
         return video;
     }
 	
@@ -485,11 +490,10 @@ class Comparador implements Comparator<Request> {
      */
     
     public int compare(Request e1, Request e2) {
-        if(e1.getUri() == e2.getUri()) {
+        if(e1.getVideoId() == e2.getVideoId()) {
             return 1;  
         } else {
             return 0;
         }
     }
 }
-
