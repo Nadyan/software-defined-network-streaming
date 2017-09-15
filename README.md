@@ -1,4 +1,5 @@
 ABORDAGEM PARA DISTRIBUIÇÃO DE VÍDEO BASEADA EM REDES DEFINIDAS POR SOFTWARE
+
 NADYAN SURIEL PSCHEIDT - UDESC
 
   A transmissão de vídeos através de uma rede é um serviço que vem sendo cada vez mais requisitado.
