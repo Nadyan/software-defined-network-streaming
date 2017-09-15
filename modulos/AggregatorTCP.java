@@ -223,6 +223,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                     return Command.CONTINUE;
                     
                 } else if(http.getHTTPMethod() == HTTPMethod.GET && gets.isEmpty() == false) {
+                   
                     /* Se for um GET de um HEAD anterior */
                     
                     /* Pacote HTTP com método GET, requisitando o vídeo.
@@ -238,7 +239,24 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                     videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
                     //String resto = arr[2];
                     
-                    if(gets.get(0).getVideoId().equals(videoId)) {  // esse if esta dando problema na recepcao do video do user3, que é o video diferente
+                    if(requests.isEmpty() == false && requests.get(0).getPort() == userPort 
+                                                   && requests.get(0).getTcpPort() != tcpTranspPort) {
+                        
+                        /* SE FOR UM GET DE RECONEXAO, ATUALIZA A PORTA TCP DO REQUEST */
+                        /* Melhorar isso, da pra fazer uma lista que armazena todos os requests,
+                         * e pra montar o fluxo pega o "mais recente" */
+                        
+                        Request atualiza = new Request(requests.get(0).getVideoId(), 
+                                                       requests.get(0).getMacAddress(),
+                                                       requests.get(0).getIpAddress(),
+                                                       requests.get(0).getPort(),
+                                                       tcpTranspPort);
+                        
+                        requests.set(0, atualiza);
+                        logger.info("Porta TCP atualizada para o usuario " + requests.get(0).getIpAddress() + "!");
+                    }
+
+                    if(gets.get(0).getVideoId().equals(videoId)) {
                         
                         /* Se for o GET correspondente ao HEAD */
                             
@@ -256,9 +274,6 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                             videosInTraffic.add(videoId);
                             requests.add(novoRequest);
                             logger.info("Requisição nova " + videoId + " de " + srcIp);
-                            /*logger.info("Lista na posição 0: " + requests.get(0).getVideoId() 
-                                                                 + ", " + requests.get(0).getIpAddress() 
-                                                                 + ", " + requests.get(0).getPort() + "\n"); */
                             
                             return Command.CONTINUE;
                             
@@ -364,7 +379,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                  *  fluxo que foi instalado, que possui saida para o primeiro
                                  *  e segundo usuário
                                  */
-                                return Command.STOP;
+                                return Command.STOP;    // FIX: PACOTE DO SEGUNDO USER CONTINUA?!
                                 
                             } else {
                                 logger.info("GET repetido, fluxos nao agregados por ser o mesmo cliente");
