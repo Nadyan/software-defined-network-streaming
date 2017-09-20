@@ -116,7 +116,11 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 
     @Override
     public boolean isCallbackOrderingPostreq(OFType type, String name) {
-        return false;
+        if(type.equals(OFType.PACKET_IN) && name.equals("forwarding")) {
+            return true;
+        } else {
+            return false;
+        }
     }
 
     @Override
