@@ -12,12 +12,12 @@ public class CompleteAddress {
      * ModifyPacketTCP.
      */
     
-    private MacAddress serverMac;         
-    private MacAddress clientMac;       
-    private IPv4Address serverIp;      
-    private IPv4Address clientIp;          
-    private TransportPort serverPort;     
-    private TransportPort clientPort;      
+    public MacAddress serverMac;         
+    public MacAddress clientMac;       
+    public IPv4Address serverIp;      
+    public IPv4Address clientIp;          
+    public TransportPort serverPort;     
+    public TransportPort clientPort;      
     
     /* Construtor */
     public CompleteAddress(MacAddress serverMac, MacAddress clientMac,
@@ -32,9 +32,7 @@ public class CompleteAddress {
         this.clientPort = clientPort;
     }
     
-    public CompleteAddress() {
-        
-    }
+    public CompleteAddress() {}
     
     /* Getters */
     public MacAddress getSeverMac() {

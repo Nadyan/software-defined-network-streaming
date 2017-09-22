@@ -88,7 +88,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
     private static Logger logger;
     public static final TransportPort HTTP_PORT = TransportPort.of(5001);
     public boolean repeat = false;
-    public CompleteAddress headerInfo;
+    public static CompleteAddress headerInfo;
     
     /*  Listas de requisições */
     protected List<Request> requests;
@@ -489,6 +489,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         return flowTCP;
     }
     
+    @SuppressWarnings("unused")
     private OFFlowAdd fluxoNullTCP(Match match, OFFactory myFactory, List<OFAction> actions) {
         
         /* Montagem do fluxo para dar drop nos pacotes */
@@ -542,6 +543,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         return mb.build();
     }
     
+    @SuppressWarnings("unused")
     private Match createMatchNull(IOFSwitch sw, TransportPort port, FloodlightContext cntx, IPv4Address srcIp, IPv4Address dstIp) {
         
         /* Criação do match para dar drop nos pacotes de requisição vindos do segundo usuário
@@ -575,6 +577,4 @@ class Comparador implements Comparator<Request> {
         }
     }
 }
-
-
 

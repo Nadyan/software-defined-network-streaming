@@ -147,9 +147,21 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
         /* TODO: Duplica o pacote de video e modifica o cabeçalho do clone
          * com as informações do segundo usuário */
         
-        /* TODO: Descobrir como trazer as informações coletadas no AggregatorTCP */
+        /* So for um pacote de video */
         
-        return null;
+            /* Informações do usuário */
+            AggregatorTCP info = new AggregatorTCP();
+            TransportPort porta = info.headerInfo.getClientPort();
+            MacAddress mac = info.headerInfo.getClientMac();
+            IPv4Address ip = info.headerInfo.getClientIp();
+        
+            /* Duplica o pacote */
+            
+            /* Modifica cabeçalho de um */
+            
+            /* Escreve os dois pacotes no switch */
+            
+        return Command.CONTINUE; // ou stop?
     }
 
 }
