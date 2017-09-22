@@ -75,12 +75,19 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
      * Abordagem para Distribuição de Vídeo Baseada em Redes Definidas por Software
      * Nadyan Suriel Pscheidt
      * 
+     * Módulo responsável pela identificação de requests,
+     * identificação de fluxos redundantes, 
+     * agregação de fluxos redundantes
+     * e criação de regras na tabela de fluxos.
+     * 
+     * Deve ser executado antes do módulo ModifyPacketTCP e Forwarding.
      */
 
     private IFloodlightProviderService floodlightProvider;
     private static Logger logger;
     public static final TransportPort HTTP_PORT = TransportPort.of(5001);
     public boolean repeat = false;
+    public CompleteAddress headerInfo;
     
     /*  Listas de requisições */
     protected List<Request> requests;
@@ -108,7 +115,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
     public String getName() {
         return AggregatorTCP.class.getSimpleName();
     }
-
+    
     @Override
     public boolean isCallbackOrderingPrereq(OFType type, String name) {
         return false;
@@ -116,7 +123,11 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 
     @Override
     public boolean isCallbackOrderingPostreq(OFType type, String name) {
-        if(type.equals(OFType.PACKET_IN) && name.equals("forwarding")) {
+        
+        /* Deve ser executado antes do Forwarding e ModifyPacketTCP */
+        
+        if(type.equals(OFType.PACKET_IN) && name.equals("forwarding") 
+                                         || name.equals("modifypackettcp")) {
             return true;
         } else {
             return false;
@@ -146,7 +157,9 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         /* Criação das listas */
         requests = new ArrayList<Request>();                        // Lista com as informações dos clientes
         videosInTraffic = new ArrayList<String>();                  // Lista com os videos trafegando
-        gets = new ArrayList<Request>();                            // Lista para administrar os gets
+        gets = new ArrayList<Request>();                            // Lista para administrar os gets 
+        
+        headerInfo = new CompleteAddress();                         // Armazenamento das informações para modificação de cabeçalho
     }
 
     @Override
@@ -208,14 +221,13 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                 
                 if(http.getHTTPMethod() == HTTPMethod.HEAD) {
                     
-                    /* Pacote HTTP com método HEAD, informando o vídeo que será requisitado */
-                    
-                    /* Adiciona na lista o video que será requisitado
+                    /* Pacote HTTP com método HEAD, informando o vídeo que será requisitado
+                     *
+                     * Adiciona na lista o HEAD do video que será requisitado
                      * para comparar com o GET posteriormente 
                      */
                     
-                    /* Pega apenas o id do video do URI */
-                    videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
+                    videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);    // Pega apenas o ID do video pelo URI
                     
                     logger.info("---------- HEAD recebido ----------");
                     logger.info("URI: " + arr[1]);
@@ -228,9 +240,9 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                     
                 } else if(http.getHTTPMethod() == HTTPMethod.GET && gets.isEmpty() == false) {
                    
-                    /* Se for um GET de um HEAD anterior */
-                    
-                    /* Pacote HTTP com método GET, requisitando o vídeo.
+                    /* Se for um GET de um HEAD anterior
+                     *
+                     * Pacote HTTP com método GET, requisitando o vídeo.
                      * É necessário pegar a requisição pelo GET pois a porta
                      * que será enviado o vídeo é a porta na qual saiu o GET, 
                      * por isso, não é possível analisar a requisição pelo HEAD.
@@ -247,7 +259,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                                    && requests.get(0).getTcpPort() != tcpTranspPort) {
                         
                         /* SE FOR UM GET DE RECONEXAO, ATUALIZA A PORTA TCP DO REQUEST */
-                        /* Melhorar isso, da pra fazer uma lista que armazena todos os requests,
+                        /* TODO: Melhorar isso, da pra fazer uma lista que armazena todos os requests,
                          * e pra montar o fluxo pega o "mais recente" */
                         
                         Request atualiza = new Request(requests.get(0).getVideoId(), 
@@ -271,7 +283,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                         
                         if(videosInTraffic.contains(videoId) == false) {
                             
-                            /* Se ainda havia uma transferência do vídeo requisitado */
+                            /* Se ainda não havia uma transferência do vídeo requisitado */
                 
                             Request novoRequest = new Request(videoId, srcMac, srcIp, userPort, tcpTranspPort);
                             
@@ -301,8 +313,8 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
 
                             if(originalIp.equals(srcIp) == false && repeat == false) {
     
-                                repeat = true;
-                                
+                                /* Se for uma requisição de um mesmo video porém de outro cliente */
+
                                 /* Inicio da montagem dos fluxos */
                                 OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
                                 OFActions actions = my13Factory.actions();
@@ -310,6 +322,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 
                                 List<OFAction> actionsFrom = new ArrayList<OFAction>();                  // Lista de actions para o fluxo do server para o cliente
                                 List<OFAction> actionsTo = new ArrayList<OFAction>();                    // Lista de actions para o fluxo do cliente para o server (ACK)
+                                List<OFAction> actionsNull = new ArrayList<OFAction>();                  // Lista nula para fazer drop de pacotes
                                 
                                 /* Montagem do fluxo server -> cliente */
                                 /* Set do IP do segundo usuário */
@@ -353,7 +366,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 /* Set do IP do server */
                                 OFActionSetField setDstIpS1 = actions.buildSetField()
                                                              .setField(oxms.buildIpv4Dst()
-                                                             .setValue(dstIp)    // IP do server
+                                                             .setValue(dstIp)
                                                              .build()).build();
                                 
                                 /* Set do MAC do server */
@@ -371,19 +384,34 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                                             
                                 OFFlowAdd flowToTCP = fluxoTCP(createMatchToPacket(sw, HTTP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo);
                                 
-                                /* Escrita dos fluxos na tabela de fluxos */
+                                /* Escrita das regras na tabela de fluxos */
                                 sw.write(flowFromTCP);
                                 sw.write(flowToTCP);
                                 logger.info("Fluxos agregados para o request " + uri);
                                 logger.info("Receptores nas portas: " + originalPort + " e " + userPort);
                                 gets.clear();
+                                repeat = true;
+                                
+                                /* TODO: SUBSTITUIR O DROP POR UM PACOTE DE RESPOSTA */
+                                /* Cria regra anulando os proximos requests do segundo usuário */
+                                OFFlowAdd flowNullTCP = fluxoNullTCP(createMatchNull(sw, HTTP_PORT, cntx, srcIp, dstIp), my13Factory, actionsNull);
+                                sw.write(flowNullTCP);
+                                
+                                /* TODO: ONDE ARMAZENAR ESSAS INFOS PRA USAR NO MODULO MODIFYPACKET? */
+                                /* Armazena as informações do segundo usuário para modificação do cabeçalho */
+                                headerInfo.setServerMac(dstMac);                       
+                                headerInfo.setClientMac(srcMac);                       
+                                headerInfo.setServerIp(dstIp);                         
+                                headerInfo.setClientIp(srcIp);                           
+                                headerInfo.setServerPort(TransportPort.of(5001));       
+                                headerInfo.setClientPort(srcPort);                  // Porta TCP do cliente              
                                 
                                 /*  Barra o pacote para ele nao seguir para o servidor,
-                                 *  pois já sera transmitido para o segundo usuário pelo
+                                 *  pois já será transmitido para o segundo usuário pelo
                                  *  fluxo que foi instalado, que possui saida para o primeiro
                                  *  e segundo usuário
                                  */
-                                return Command.STOP;    // FIX: PACOTE DO SEGUNDO USER CONTINUA?!
+                                return Command.STOP;
                                 
                             } else {
                                 logger.info("GET repetido, fluxos nao agregados por ser o mesmo cliente");
@@ -408,7 +436,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         Set<OFFlowModFlags> flags = new HashSet<>();
         flags.add(OFFlowModFlags.SEND_FLOW_REM);
         
-        OFFlowAdd flowToTCP = myFactory
+        OFFlowAdd flowTCP = myFactory
                               .buildFlowAdd()
                               .setActions(actions)
                               .setBufferId(OFBufferId.NO_BUFFER)
@@ -418,7 +446,28 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                               .setCookie(U64.of(1L << 59))
                               .setPriority(FlowModUtils.PRIORITY_HIGH)
                               .build();
-        return flowToTCP;
+        return flowTCP;
+    }
+    
+    private OFFlowAdd fluxoNullTCP(Match match, OFFactory myFactory, List<OFAction> actions) {
+        
+        /* Montagem do fluxo para dar drop nos pacotes */
+        
+        Set<OFFlowModFlags> flags = new HashSet<>();
+        flags.add(OFFlowModFlags.SEND_FLOW_REM);
+        
+        OFFlowAdd flowNull = myFactory
+                             .buildFlowAdd()
+                             .setActions(actions)
+                             .setBufferId(OFBufferId.NO_BUFFER)
+                             .setIdleTimeout(100)
+                             .setHardTimeout(0)
+                             .setMatch(match)
+                             .setCookie(U64.of(1L << 59))
+                             .setPriority(FlowModUtils.PRIORITY_HIGH)
+                             .build();
+        
+        return flowNull;
     }
     
     private Match createMatchFromPacket(IOFSwitch sw, TransportPort port, FloodlightContext cntx, IPv4Address srcIp, IPv4Address dstIp) {
@@ -430,10 +479,10 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         Match.Builder mb = sw.getOFFactory().buildMatch();
         
         mb.setExact(MatchField.ETH_TYPE, EthType.IPv4)
-          .setExact(MatchField.IPV4_SRC, dstIp)             // IP server
-          .setExact(MatchField.IPV4_DST, srcIp)             // IP cliente
+          .setExact(MatchField.IPV4_SRC, dstIp)             // IP Server
+          .setExact(MatchField.IPV4_DST, srcIp)             // IP Cliente
           .setExact(MatchField.IP_PROTO, IpProtocol.TCP)
-          .setExact(MatchField.TCP_DST,  port);             // porta de transmissao do cliente
+          .setExact(MatchField.TCP_DST,  port);             // Porta de transmissao do Cliente
     
         return mb.build();
     }
@@ -445,71 +494,29 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         Match.Builder mb = sw.getOFFactory().buildMatch();
         
         mb.setExact(MatchField.ETH_TYPE, EthType.IPv4)
-          .setExact(MatchField.IPV4_SRC, srcIp)
-          .setExact(MatchField.IPV4_DST, dstIp)
+          .setExact(MatchField.IPV4_SRC, srcIp)              // IP Cliente
+          .setExact(MatchField.IPV4_DST, dstIp)              // IP Server
           .setExact(MatchField.IP_PROTO, IpProtocol.TCP)
           .setExact(MatchField.TCP_DST,  port);              // HTTP_PORT (5001)
         
         return mb.build();
     }
-}
-
-class Request {
     
-    /* 
-     *  Classe Request que armazena as informações do request:
-     *  - Qual vídeo foi requisitado;
-     *  - MAC do usuário que requisitou o vídeo;
-     *  - IP do usuário que requisitou o vídeo; e
-     *  - Porta do Switch do usuário que requisitou o vídeo.
-     */
-    
-    private String video;
-    private MacAddress receiverMac;
-    private IPv4Address receiverAddress;
-    private TransportPort tcpPort;
-    private int receiverPort;
-    
-    public Request(String video, MacAddress receiverMac, IPv4Address receiverAddress, int receiverPort, TransportPort tcpPort) {
-        this.video = video;
-        this.receiverMac = receiverMac;
-        this.receiverAddress = receiverAddress;
-        this.receiverPort = receiverPort;
-        this.tcpPort = tcpPort;
-    }
-    
-    public Request(String video) {
-        this.video = video;
-    }
-    
-    public Request(String video, int receiverPort) {
-        this.video = video;
-        this.receiverPort = receiverPort;
-    }
-    
-    public Request(String video, TransportPort tcpPort) {
-        this.video = video;
-        this.tcpPort = tcpPort;
-    }
-    
-    public String getVideoId() {
-        return video;
-    }
-    
-    public MacAddress getMacAddress() {
-        return receiverMac;
-    }
-    
-    public IPv4Address getIpAddress() {
-        return receiverAddress;
-    }
-    
-    public int getPort() {
-        return receiverPort;
-    }
-    
-    public TransportPort getTcpPort() {
-        return tcpPort;
+    private Match createMatchNull(IOFSwitch sw, TransportPort port, FloodlightContext cntx, IPv4Address srcIp, IPv4Address dstIp) {
+        
+        /* Criação do match para dar drop nos pacotes de requisição vindos do segundo usuário
+         * após o fluxo agregado ser criado
+         */
+        
+        Match.Builder mb = sw.getOFFactory().buildMatch();
+        
+        mb.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+          .setExact(MatchField.IPV4_SRC, srcIp)              // IP Cliente
+          .setExact(MatchField.IPV4_DST, dstIp)              // IP Server
+          .setExact(MatchField.IP_PROTO, IpProtocol.TCP)
+          .setExact(MatchField.TCP_DST, port);               // HTTP_PORT (5001)
+        
+        return mb.build();
     }
 }
 
@@ -528,4 +535,6 @@ class Comparador implements Comparator<Request> {
         }
     }
 }
+
+
 
