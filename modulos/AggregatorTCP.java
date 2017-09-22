@@ -31,6 +31,7 @@ import org.projectfloodlight.openflow.protocol.OFFactory;
 import org.projectfloodlight.openflow.protocol.OFFlowAdd;
 import org.projectfloodlight.openflow.protocol.OFFlowModFlags;
 import org.projectfloodlight.openflow.protocol.OFMessage;
+import org.projectfloodlight.openflow.protocol.OFPacketOut;
 import org.projectfloodlight.openflow.protocol.OFType;
 import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
@@ -259,7 +260,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                                    && requests.get(0).getTcpPort() != tcpTranspPort) {
                         
                         /* SE FOR UM GET DE RECONEXAO, ATUALIZA A PORTA TCP DO REQUEST */
-                        /* TODO: Melhorar isso, da pra fazer uma lista que armazena todos os requests,
+                        /* TODO: Melhorar isso, fazer uma lista que armazena todos os requests,
                          * e pra montar o fluxo pega o "mais recente" */
                         
                         Request atualiza = new Request(requests.get(0).getVideoId(), 
@@ -322,7 +323,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 
                                 List<OFAction> actionsFrom = new ArrayList<OFAction>();                  // Lista de actions para o fluxo do server para o cliente
                                 List<OFAction> actionsTo = new ArrayList<OFAction>();                    // Lista de actions para o fluxo do cliente para o server (ACK)
-                                List<OFAction> actionsNull = new ArrayList<OFAction>();                  // Lista nula para fazer drop de pacotes
+                                //List<OFAction> actionsNull = new ArrayList<OFAction>();                  // Lista nula para fazer drop de pacotes
                                 
                                 /* Montagem do fluxo server -> cliente */
                                 /* Set do IP do segundo usuário */
@@ -392,10 +393,49 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 gets.clear();
                                 repeat = true;
                                 
-                                /* TODO: SUBSTITUIR O DROP POR UM PACOTE DE RESPOSTA */
-                                /* Cria regra anulando os proximos requests do segundo usuário */
-                                OFFlowAdd flowNullTCP = fluxoNullTCP(createMatchNull(sw, HTTP_PORT, cntx, srcIp, dstIp), my13Factory, actionsNull);
-                                sw.write(flowNullTCP);
+                                /*************************************************************************************/
+                                /* Cria regra anulando os proximos requests do segundo usuário (NAO UTILIZAR) */
+                                //OFFlowAdd flowNullTCP = fluxoNullTCP(createMatchNull(sw, HTTP_PORT, cntx, srcIp, dstIp), my13Factory, actionsNull);
+                                //sw.write(flowNullTCP);
+                                
+                                /* Criação do pacote de resposta ACK (Servidor -> Cliente 2)
+                                 * para interromper o envio do request do cliente (UTILIZAR)
+                                 */
+                                
+                                Ethernet l2 = new Ethernet();
+                                l2.setSourceMACAddress(dstMac);           // Origem do pacote: MAC Server (dstMac)
+                                l2.setDestinationMACAddress(srcMac);      // Destino do pacote: MAC Cliente (srcMac)
+                                l2.setEtherType(EthType.IPv4);          
+                                
+                                IPv4 l3 = new IPv4();
+                                l3.setSourceAddress(dstIp);               // Origem do pacote: IP Server (dstIp)
+                                l3.setDestinationAddress(srcIp);          // Destino do pacote: IP Cliente (srcIp)
+                                l3.setTtl((byte) 64);
+                                l3.setProtocol(IpProtocol.TCP);
+                                
+                                TCP l4 = new TCP();
+                                l4.setSourcePort(TransportPort.of(5001)); // Origem do pacote: Porta Server (dstPort) 
+                                l4.setDestinationPort(srcPort);           // Destino do pacote: Porta Cliente (srcPort)
+                                l4.setFlags((short) 0x010);               // Sinaliza que o pacote é um ACK
+                                
+                                /*  Payload */
+                                Data l7 = new Data();
+                                l7.setData(new byte[1000]);               // Payload pode ser vazio, o que interessa é a flag ACK
+                                
+                                l2.setPayload(l3);
+                                l3.setPayload(l4);
+                                l4.setPayload(l7);
+                                byte[] serializedData = l2.serialize();
+                                
+                                /* Criação do Packet-out e escrita no switch */
+                                OFPacketOut po = sw.getOFFactory().buildPacketOut()
+                                                   .setData(serializedData)
+                                                   .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.NORMAL, userPort)))
+                                                   .setInPort(OFPort.CONTROLLER)
+                                                   .build();
+                                
+                                sw.write(po);
+                                /*************************************************************************************/
                                 
                                 /* TODO: ONDE ARMAZENAR ESSAS INFOS PRA USAR NO MODULO MODIFYPACKET? */
                                 /* Armazena as informações do segundo usuário para modificação do cabeçalho */
