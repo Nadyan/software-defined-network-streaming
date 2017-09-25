@@ -19,35 +19,18 @@ package net.floodlightcontroller.aggregator;
 
 import java.util.Collection;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Map;
-import java.util.List;
-import java.util.Set;
-import java.util.ArrayList;
-import java.util.HashSet;
 
-import org.projectfloodlight.openflow.protocol.OFFactories;
-import org.projectfloodlight.openflow.protocol.OFFactory;
-import org.projectfloodlight.openflow.protocol.OFFlowAdd;
-import org.projectfloodlight.openflow.protocol.OFFlowModFlags;
 import org.projectfloodlight.openflow.protocol.OFMessage;
+import org.projectfloodlight.openflow.protocol.OFPacketOut;
 import org.projectfloodlight.openflow.protocol.OFType;
-import org.projectfloodlight.openflow.protocol.OFVersion;
 import org.projectfloodlight.openflow.protocol.action.OFAction;
-import org.projectfloodlight.openflow.protocol.action.OFActionOutput;
-import org.projectfloodlight.openflow.protocol.action.OFActionSetField;
-import org.projectfloodlight.openflow.protocol.action.OFActions;
-import org.projectfloodlight.openflow.protocol.match.Match;
-import org.projectfloodlight.openflow.protocol.match.MatchField;
-import org.projectfloodlight.openflow.protocol.oxm.OFOxms;
 import org.projectfloodlight.openflow.types.EthType;
 import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.IpProtocol;
 import org.projectfloodlight.openflow.types.MacAddress;
-import org.projectfloodlight.openflow.types.OFBufferId;
 import org.projectfloodlight.openflow.types.OFPort;
 import org.projectfloodlight.openflow.types.TransportPort;
-import org.projectfloodlight.openflow.types.U64;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -59,13 +42,9 @@ import net.floodlightcontroller.core.module.FloodlightModuleContext;
 import net.floodlightcontroller.core.module.FloodlightModuleException;
 import net.floodlightcontroller.core.module.IFloodlightModule;
 import net.floodlightcontroller.core.module.IFloodlightService;
-import net.floodlightcontroller.packet.Data;
 import net.floodlightcontroller.packet.Ethernet;
 import net.floodlightcontroller.packet.IPv4;
 import net.floodlightcontroller.packet.TCP;
-import net.floodlightcontroller.packet.HTTP;
-import net.floodlightcontroller.packet.HTTPMethod;
-import net.floodlightcontroller.util.FlowModUtils;
 
 public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
 
@@ -144,25 +123,85 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
     @Override
     public Command receive(IOFSwitch sw, OFMessage msg, FloodlightContext cntx) {
         
-        /* TODO: Duplica o pacote de video e modifica o cabeçalho do clone
+        /* Duplica o pacote de video e modifica o cabeçalho do clone
          * com as informações do segundo usuário */
         
-        /* So for um pacote de video */
-        
-            /* Informações do usuário */
-            AggregatorTCP info = new AggregatorTCP();
-            TransportPort porta = info.headerInfo.getClientPort();
-            MacAddress mac = info.headerInfo.getClientMac();
-            IPv4Address ip = info.headerInfo.getClientIp();
-        
-            /* Duplica o pacote */
+        if(AggregatorTCP.headerInfo.getFlag() == true) {
             
-            /* Modifica cabeçalho de um */
+            Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
             
-            /* Escreve os dois pacotes no switch */
+            MacAddress srcMac = eth.getSourceMACAddress();
+            MacAddress dstMac = eth.getDestinationMACAddress();
             
-        return Command.CONTINUE; // ou stop?
-    }
+            if(dstMac == AggregatorTCP.originalUserInfo.getClientMac()
+                    && srcMac == AggregatorTCP.headerInfo.getSeverMac()) {
+                
+                /* Se for um pacote com destino ao primeiro usuario que requisitou o conteudo */
+                
+                if(eth.getEtherType() == EthType.IPv4) {
+                    
+                    IPv4 ipv4 = (IPv4) eth.getPayload();
+                    
+                    IPv4Address srcIp = ipv4.getSourceAddress();
+                    IPv4Address dstIp = ipv4.getDestinationAddress();
+                    
+                    if(dstIp == AggregatorTCP.originalUserInfo.getClientIp()
+                        && srcIp == AggregatorTCP.headerInfo.getServerIp()) {
+                        
+                        if(ipv4.getProtocol() == IpProtocol.TCP) {
+                            
+                            TCP tcp = (TCP) ipv4.getPayload();
+                            
+                            if(tcp.getDestinationPort() == AggregatorTCP.originalUserInfo.getClientPort()
+                                      && tcp.getFlags() == ((short) 0x018)) { // flag sinalizando que é um pedaço do video (0x018)
 
+                                /* TODO: Verificar como comparar a flag com o 0x18 */
+                        
+                                /* Se for um pacote de video */
+                                
+                                /* Informações do usuário */
+                                TransportPort port = AggregatorTCP.headerInfo.getClientPort();
+                                MacAddress mac = AggregatorTCP.headerInfo.getClientMac();
+                                IPv4Address ip = AggregatorTCP.headerInfo.getClientIp();
+                                
+                                /* Duplica o pacote nas tres camadas */
+                                Ethernet eth2 = (Ethernet) eth.clone(); // eth2 terá o cabeçalho alterado para encaminhamento ao segundo usuário
+                                IPv4 ipv42 = (IPv4) eth2.getPayload();
+                                TCP tcp2 = (TCP) ipv42.getPayload();
+                                
+                                /* Modifica os cabecalhos nas tres camadas */
+                                eth2.setDestinationMACAddress(mac);
+                                ipv42.setDestinationAddress(ip);
+                                tcp2.setDestinationPort(port);
+                               
+                                /* Remonta o pacote */
+                                eth2.setPayload(ipv42);
+                                ipv4.setPayload(tcp2);
+                                byte[] serializedData = eth2.serialize();
+                                
+                                /* Cria o Packet-out com cabeçalho modificado */
+                                OFPacketOut po = sw.getOFFactory().buildPacketOut()
+                                                   .setData(serializedData)
+                                                   .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.NORMAL, AggregatorTCP.headerInfo.getSwitchPort())))
+                                                   .setInPort(OFPort.CONTROLLER)
+                                                   .build();
+                                
+                                /* Escreve o Packet-out no switch */
+                                sw.write(po);
+                                
+                                logger.info("Packet-out: " + serializedData);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+                
+        return Command.CONTINUE;
+    }
 }
+    
+    
+         
+    
 
