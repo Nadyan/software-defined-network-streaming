@@ -93,6 +93,10 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
     public static Ethernet copiaAck;
     public static boolean ackCopiado = false;
     public static boolean flag = false;
+    int getAck = 0;
+    byte offset;
+    byte[] options;
+    int acknowledge;
     
     /*  Listas de requisições */
     protected List<Request> requests;
@@ -100,11 +104,11 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
     protected List<Request> gets;
     
     /* Endereços */
-    private IPv4Address ipServer1 = IPv4Address.of("10.0.0.1");
+    //private IPv4Address ipServer1 = IPv4Address.of("10.0.0.1");
     private IPv4Address ipUser1 = IPv4Address.of("10.0.0.2");
     private IPv4Address ipUser2 = IPv4Address.of("10.0.0.3");
     private IPv4Address ipUser3 = IPv4Address.of("10.0.0.4");
-    //private MacAddress macServer1 = MacAddress.of("00:00:00:00:00:01");
+    private MacAddress macServer1 = MacAddress.of("00:00:00:00:00:01");
     //private MacAddress macUser1 = MacAddress.of("00:00:00:00:00:02");
     //private MacAddress macUser2 = MacAddress.of("00:00:00:00:00:03");
     //private MacAddress macUser3 = MacAddress.of("00:00:00:00:00:04");
@@ -131,7 +135,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         
         /* Deve ser executado antes do Forwarding e ModifyPacketTCP */
         
-        if(type.equals(OFType.PACKET_IN) && name.equals("forwarding") 
+        if (type.equals(OFType.PACKET_IN) && name.equals("forwarding") 
                                          || name.equals("modifypackettcp")) {
             return true;
         } else {
@@ -182,7 +186,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         MacAddress srcMac = eth.getSourceMACAddress();              // MAC cliente
         MacAddress dstMac = eth.getDestinationMACAddress();         // MAC server
         
-        if(eth.getEtherType() == EthType.IPv4) {
+        if (eth.getEtherType() == EthType.IPv4) {
             
             /* Pacote IPv4 */
             
@@ -190,20 +194,38 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
             
             IPv4Address srcIp = ipv4.getSourceAddress();            // IP cliente
             IPv4Address dstIp = ipv4.getDestinationAddress();       // IP server
-            
-            if(srcIp.equals(ipUser1) == true) {                     // Porta do Switch para cada usuário
+             
+            if (srcIp.equals(ipUser1) == true) {                     // Porta do Switch para cada usuário
                 userPort = u1Port;
-            } else if(srcIp.equals(ipUser2) == true) {
+            } else if (srcIp.equals(ipUser2) == true) {
                 userPort = u2Port;
-            } else if(srcIp.equals(ipUser3) == true) {
+            } else if (srcIp.equals(ipUser3) == true) {
                 userPort = u3Port;
             }
             
-            if(ipv4.getProtocol() == IpProtocol.TCP) {
+            if (ipv4.getProtocol() == IpProtocol.TCP) {
                 
                 /* Pacote TCP */
                 
                 TCP tcp = (TCP) ipv4.getPayload();
+                
+                if (ackCopiado == false && tcp.getFlags() == (short) 0x10 && eth.getSourceMACAddress().equals(macServer1)) { 
+                    
+                    // if utilizado para copiar o pacote ACK == (16 ou 0x10)
+                    // de origem no servidor que é a resposta ao GET do cliente
+                    
+                    if (getAck == 45) {     // Se ja pegou o GET e agora é o ACK
+                        copiaAck = (Ethernet) eth.clone();
+                        ackCopiado = true;
+                        getAck++;
+                        
+                        IPv4 c3 = (IPv4) copiaAck.getPayload();
+                        TCP c4 = (TCP) c3.getPayload();
+                        offset = c4.getDataOffset();
+                        options = c4.getOptions();
+                        acknowledge = c4.getAcknowledge();
+                    }
+                }
 
                 /* Pega header HTTP do payload do TCP */
                 Data dt = (Data)tcp.getPayload();
@@ -218,26 +240,15 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                 HTTP http = new HTTP();
                 
                 /* Identificação do método da requisição HTTP */
-                if(method.compareTo("HEAD") == 0) {
+                if (method.compareTo("HEAD") == 0) {
                     http.setHTTPMethod(HTTPMethod.HEAD);
-                } else if(method.compareTo("GET") == 0) {
+                } else if (method.compareTo("GET") == 0) {
                     http.setHTTPMethod(HTTPMethod.GET);
                 } else {
                     http.setHTTPMethod(HTTPMethod.NONE);
-                    
-                    // Se for um ACK com origem no server
-                    /*if(tcp.getFlags() == (short) 0x010 && ipv4.getSourceAddress() == ipServer1) {
-                        // Se for o ACK de um GET 
-                        logger.info("Entrou no if do flag");
-                        if(tcp.getAcknowledge() == 258) {
-                            copiaAck = (Ethernet) eth.clone();
-                            ackCopiado = true;
-                            logger.info("Pacote ACK copiado!");
-                        }
-                    }*/
                 }
                 
-                if(http.getHTTPMethod() == HTTPMethod.HEAD) {
+                if (http.getHTTPMethod() == HTTPMethod.HEAD) {
                     
                     /* Pacote HTTP com método HEAD, informando o vídeo que será requisitado
                      *
@@ -256,7 +267,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                     
                     return Command.CONTINUE;
                     
-                } else if(http.getHTTPMethod() == HTTPMethod.GET && gets.isEmpty() == false) {
+                } else if (http.getHTTPMethod() == HTTPMethod.GET && gets.isEmpty() == false) {
                    
                     /* Se for um GET de um HEAD anterior
                      *
@@ -273,8 +284,8 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                     videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
                     //String resto = arr[2];
                     
-                    if(requests.isEmpty() == false && requests.get(0).getPort() == userPort 
-                                                   && requests.get(0).getTcpPort() != tcpTranspPort) {
+                    if (requests.isEmpty() == false && requests.get(0).getPort() == userPort 
+                                                    && requests.get(0).getTcpPort() != tcpTranspPort) {
                         
                         /* SE FOR UM GET DE RECONEXAO, ATUALIZA A PORTA TCP DO REQUEST */
                         /* TODO: Melhorar isso, fazer uma lista que armazena todos os requests,
@@ -290,7 +301,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                         logger.info("Porta TCP atualizada para o usuario " + requests.get(0).getIpAddress() + "!");
                     }
 
-                    if(gets.get(0).getVideoId().equals(videoId)) {
+                    if (gets.get(0).getVideoId().equals(videoId)) {
                         
                         /* Se for o GET correspondente ao HEAD */
                             
@@ -299,7 +310,9 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                         logger.info("URI: " + uri);
                         logger.info("VideoId: " + videoId);
                         
-                        if(videosInTraffic.contains(videoId) == false) {
+                        if (videosInTraffic.contains(videoId) == false) {
+                            
+                            getAck = 45;    // Variavel de controle para a copia do pacote ACK
                             
                             /* Se ainda não havia uma transferência do vídeo requisitado */
                 
@@ -321,7 +334,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                             int index = -1;
                             Request searchKey = new Request(videoId);
                             index = Collections.binarySearch(requests, searchKey, new Comparador());    // Procura a posição na lista do vídeo
-                            if(index == -1) {
+                            if (index == -1) {
                                 logger.info("ERRO: ID de vídeo não encontrado");
                             }
                             IPv4Address originalIp = requests.get(index).getIpAddress();                // Recupera IP do primeiro usuário
@@ -329,7 +342,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                             int originalPort = requests.get(index).getPort();                           // Recupera Porta do primeiro usuário
                             TransportPort originalTcpTranspPort = requests.get(index).getTcpPort();     // Recupera Porta TCP do primeiro usuario
 
-                            if(originalIp.equals(srcIp) == false && repeat == false) {
+                            if (originalIp.equals(srcIp) == false && repeat == false) {
     
                                 /* Se for uma requisição de um mesmo video porém de outro cliente */
 
@@ -414,40 +427,38 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 repeat = true;
                                 
                                 /******************** Tratamento de mensagens do segundo usuário **************************/
-                                /* Cria regra anulando os proximos ACKs do segundo usuário (NAO UTILIZAR) */
+                                /* Cria regra anulando os proximos ACKs do segundo usuário */
                                 OFFlowAdd flowNullTCP = fluxoNullTCP(createMatchNull(sw, HTTP_PORT, cntx, srcIp, dstIp), my13Factory, actionsNull);
                                 sw.write(flowNullTCP);
                                 
-                                /* Criação do pacote de resposta ACK (Servidor -> Cliente 2) para interromper o envio do request do cliente (UTILIZAR) */
+                                /* Criação do pacote de resposta ACK (Servidor -> Cliente 2) para interromper o envio do request do cliente */
                                 Ethernet l2 = new Ethernet();
-                                l2.setSourceMACAddress(dstMac);                  // Origem do pacote: MAC Server (dstMac)
-                                l2.setDestinationMACAddress(srcMac);             // Destino do pacote: MAC Cliente (srcMac)
+                                l2.setSourceMACAddress(dstMac);                     // Origem do pacote: MAC Server (dstMac)
+                                l2.setDestinationMACAddress(srcMac);                // Destino do pacote: MAC Cliente (srcMac)
                                 l2.setEtherType(EthType.IPv4);
                                 
-                                IPv4 l3 = new IPv4();
-                                l3.setSourceAddress(dstIp);                     // Origem do pacote: IP Server (dstIp)
-                                l3.setDestinationAddress(srcIp);                // Destino do pacote: IP Cliente (srcIp)
+                                IPv4 l3 = (IPv4) new IPv4();
+                                l3.setSourceAddress(dstIp);                         // Origem do pacote: IP Server (dstIp)
+                                l3.setDestinationAddress(srcIp);                    // Destino do pacote: IP Cliente (srcIp)
                                 l3.setTtl((byte) 64);
                                 l3.setProtocol(IpProtocol.TCP);
+                                l3.setFlags((byte) 0x02);
                                 
-                                TCP l4 = new TCP();
-                                l4.setSourcePort(TransportPort.of(5001));       // Origem do pacote: Porta Server (dstPort) 
-                                l4.setDestinationPort(srcPort);                 // Destino do pacote: Porta Cliente (srcPort)
+                                TCP l4 = (TCP) new TCP();
+                                l4.setSourcePort(TransportPort.of(5001));           // Origem do pacote: Porta Server (dstPort) 
+                                l4.setDestinationPort(tcp.getSourcePort());         // Destino do pacote: Porta Cliente (srcPort)
                                 l4.setSequence(tcp.getAcknowledge());
-                                l4.setAcknowledge(tcp.getAcknowledge() + 257);  // (1 + 257)  // TODO FIX: RETORNANDO LIXO? Acho que aqui esta certo, o problema 'e na montagem do packet 
-                                l4.setFlags((short) 0x010);                     // Sinaliza que é um pacote ACK
-                                l4.setWindowSize((short) 999);       
-                                l4.setChecksum((short) 0);
-                                l4.setUrgentPointer((short) 0);
+                                l4.setAcknowledge(acknowledge);                     // TODO FIX
+                                l4.setFlags((short) 0x010);                         // Sinaliza que é um pacote ACK
+                                l4.setWindowSize((short) 59);
+                                l4.setDataOffset(offset);
+                                l4.setOptions(options);
                                 
-                                System.out.println("seq: " + l4.getSequence() + " ack: " + l4.getAcknowledge() + " flag: " + l4.getFlags());
-                                
-                                /*  Payload */
                                 Data l7 = new Data();
-                                l7.setData(new byte[8192]);                 
+                                l7.setData(new byte[1000]);                 
                                 
-                                l3.setPayload(l4);
                                 l2.setPayload(l3);
+                                l3.setPayload(l4);
                                 //l4.setPayload(l7);
                                 byte[] serializedData = l2.serialize();
                                 
@@ -460,7 +471,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 sw.write(po);
                                 /*******************************************************************************************/
                              
-                                /* Armazena as informações do segundo usuário para modificação do cabeçalho */
+                                /* Armazena as informações do segundo usuário para modificação do cabeçalho em ModifyPacketTCP*/
                                 headerInfo.setServerMac(dstMac);                       
                                 headerInfo.setClientMac(srcMac);                       
                                 headerInfo.setServerIp(dstIp);                         
