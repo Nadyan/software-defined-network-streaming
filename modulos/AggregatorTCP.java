@@ -136,7 +136,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         /* Deve ser executado antes do Forwarding e ModifyPacketTCP */
         
         if (type.equals(OFType.PACKET_IN) && name.equals("forwarding") 
-                                         || name.equals("modifypackettcp")) {
+                                          || name.equals("modifypackettcp")) {
             return true;
         } else {
             return false;
@@ -448,19 +448,32 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 l4.setSourcePort(TransportPort.of(5001));           // Origem do pacote: Porta Server (dstPort) 
                                 l4.setDestinationPort(tcp.getSourcePort());         // Destino do pacote: Porta Cliente (srcPort)
                                 l4.setSequence(tcp.getAcknowledge());
-                                l4.setAcknowledge(acknowledge);                     // TODO FIX
+                                l4.setAcknowledge(acknowledge);                     // TODO FIX!
                                 l4.setFlags((short) 0x010);                         // Sinaliza que é um pacote ACK
                                 l4.setWindowSize((short) 59);
                                 l4.setDataOffset(offset);
                                 l4.setOptions(options);
                                 
-                                Data l7 = new Data();
-                                l7.setData(new byte[1000]);                 
+                                //Data l7 = new Data();
+                                //l7.setData(new byte[1000]);                 
                                 
                                 l2.setPayload(l3);
                                 l3.setPayload(l4);
                                 //l4.setPayload(l7);
                                 byte[] serializedData = l2.serialize();
+                                
+                                /*  Utilizar se for fazer a copia do ACK:
+                                IPv4 l3 = (IPv4) copiaAck.getPayload();
+                                TCP l4 = (TCP) l3.getPayload();
+                                copiaAck.setDestinationMACAddress(srcMac);
+                                l3.setDestinationAddress(srcIp);
+                                l3.setTtl((byte) 111);
+                                l4.setDestinationPort(srcPort);
+                                
+                                l3.setPayload(l4);
+                                copiaAck.setPayload(l3);
+                                
+                                byte[] serializedData = copiaAck.serialize(); */
                                 
                                 OFPacketOut po = sw.getOFFactory().buildPacketOut()
                                                    .setData(serializedData)
@@ -469,9 +482,9 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                                    .build();
                                 
                                 sw.write(po);
-                                /*******************************************************************************************/
+                                /***********************************************************************************************/
                              
-                                /* Armazena as informações do segundo usuário para modificação do cabeçalho em ModifyPacketTCP*/
+                                /* Armazena as informações do segundo usuário para modificação do cabeçalho em ModifyPacketTCP */
                                 headerInfo.setServerMac(dstMac);                       
                                 headerInfo.setClientMac(srcMac);                       
                                 headerInfo.setServerIp(dstIp);                         
@@ -482,6 +495,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 headerInfo.setFlag(true);                           // Flag que indica que o fluxo foi agregado para
                                                                                     // iniciar a duplicacao do pacote em ModifyPacketTCP
                                 
+                                /* Armazena as informações do primeiro usuário para verificações em ModifyPacketTCP */
                                 originalUserInfo.setClientIp(originalIp);
                                 originalUserInfo.setClientMac(originalMac);
                                 originalUserInfo.setClientPort(originalTcpTranspPort);
@@ -506,6 +520,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                 }
             }
         }
+        
         return Command.CONTINUE;
     }
     

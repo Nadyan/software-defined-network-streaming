@@ -30,7 +30,6 @@ import org.projectfloodlight.openflow.types.IPv4Address;
 import org.projectfloodlight.openflow.types.IpProtocol;
 import org.projectfloodlight.openflow.types.MacAddress;
 import org.projectfloodlight.openflow.types.OFPort;
-import org.projectfloodlight.openflow.types.TransportPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -126,43 +125,37 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
         /* Duplica o pacote de video e modifica o cabeçalho do clone
          * com as informações do segundo usuário */
         
-        if(AggregatorTCP.headerInfo.getFlag() == true) {
+        if (AggregatorTCP.headerInfo.getFlag() == true) {
             
             Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
             
             MacAddress srcMac = eth.getSourceMACAddress();
             MacAddress dstMac = eth.getDestinationMACAddress();
             
-            if(dstMac == AggregatorTCP.originalUserInfo.getClientMac()
+            if (dstMac == AggregatorTCP.originalUserInfo.getClientMac()
                     && srcMac == AggregatorTCP.headerInfo.getSeverMac()) {
                 
                 /* Se for um pacote com destino ao primeiro usuario que requisitou o conteudo */
                 
-                if(eth.getEtherType() == EthType.IPv4) {
+                if (eth.getEtherType() == EthType.IPv4) {
                     
                     IPv4 ipv4 = (IPv4) eth.getPayload();
                     
                     IPv4Address srcIp = ipv4.getSourceAddress();
                     IPv4Address dstIp = ipv4.getDestinationAddress();
                     
-                    if(dstIp == AggregatorTCP.originalUserInfo.getClientIp()
+                    if (dstIp == AggregatorTCP.originalUserInfo.getClientIp()
                         && srcIp == AggregatorTCP.headerInfo.getServerIp()) {
                         
-                        if(ipv4.getProtocol() == IpProtocol.TCP) {
+                        if (ipv4.getProtocol() == IpProtocol.TCP) {
                             
                             TCP tcp = (TCP) ipv4.getPayload();
                             
-                            if(tcp.getDestinationPort() == AggregatorTCP.originalUserInfo.getClientPort()
-                                      && tcp.getFlags() == ((short) 0x018)) { // flag sinalizando que é um pedaço do video (0x018)
-
-                                /* TODO: Verificar como comparar a flag com o 0x18 */
+                            if (tcp.getDestinationPort() == AggregatorTCP.originalUserInfo.getClientPort()   // Origem servidor
+                                      && (tcp.getFlags() == (short) 0x018                                    // [PSH, ACK]
+                                      ||  tcp.getFlags() == (short) 0x010)) {                                // [ACK]
                         
-                                /* Se for um pacote de video */
-                                
-                                /* Informações do usuário */
-                                TransportPort port = AggregatorTCP.headerInfo.getClientPort();
-                                MacAddress mac = AggregatorTCP.headerInfo.getClientMac();
-                                IPv4Address ip = AggregatorTCP.headerInfo.getClientIp();
+                                /* Se for um pacote de video ou ack vindo do servidor */
                                 
                                 /* Duplica o pacote nas tres camadas */
                                 Ethernet eth2 = (Ethernet) eth.clone(); // eth2 terá o cabeçalho alterado para encaminhamento ao segundo usuário
@@ -170,9 +163,9 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
                                 TCP tcp2 = (TCP) ipv42.getPayload();
                                 
                                 /* Modifica os cabecalhos nas tres camadas */
-                                eth2.setDestinationMACAddress(mac);
-                                ipv42.setDestinationAddress(ip);
-                                tcp2.setDestinationPort(port);
+                                eth2.setDestinationMACAddress(AggregatorTCP.headerInfo.getClientMac());
+                                ipv42.setDestinationAddress(AggregatorTCP.headerInfo.getClientIp());
+                                tcp2.setDestinationPort(AggregatorTCP.headerInfo.getClientPort());
                                
                                 /* Remonta o pacote */
                                 eth2.setPayload(ipv42);
@@ -188,8 +181,7 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
                                 
                                 /* Escreve o Packet-out no switch */
                                 sw.write(po);
-                                
-                                logger.info("Packet-out: " + serializedData);
+                                logger.info("Pacote duplicado, destinos: " + AggregatorTCP.originalUserInfo.getClientIp() + " e " + AggregatorTCP.headerInfo.getClientIp());
                             }
                         }
                     }
@@ -200,8 +192,4 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
         return Command.CONTINUE;
     }
 }
-    
-    
-         
-    
 
