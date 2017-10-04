@@ -92,7 +92,9 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
     public static CompleteAddress headerInfo;
     public static CompleteAddress originalUserInfo;
     public static Ethernet copiaAck;
+    public static Ethernet httpPartial;
     public static boolean ackCopiado = false;
+    public static boolean copyPartial = false;
     public static boolean flag = false;
     int getAck = 0;
     byte offset;
@@ -228,64 +230,11 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                         offset = c4.getDataOffset();
                         options = c4.getOptions();
                         acknowledge = c4.getAcknowledge();
-                        
-                        
-                        /* Cria o pacote aqui para comparar com o copiaAck */
-                        
-                        /*Ethernet l2 = new Ethernet();
-                        l2.setSourceMACAddress(eth.getSourceMACAddress());
-                        l2.setDestinationMACAddress(eth.getDestinationMACAddress());          
-                        l2.setEtherType(EthType.IPv4);
-                        
-                        IPv4 l3 = (IPv4) new IPv4();
-                        l3.setSourceAddress(c3.getSourceAddress());            
-                        l3.setDestinationAddress(c3.getDestinationAddress());  
-                        l3.setTtl(c3.getTtl());
-                        l3.setProtocol(IpProtocol.TCP);
-                        l3.setFlags(c3.getFlags());
-                        l3.setChecksum(c3.getChecksum());
-                        l3.setDiffServ(c3.getDiffServ());
-                        
-                        TCP l4 = (TCP) new TCP();
-                        l4.setSourcePort(c4.getSourcePort());          
-                        l4.setDestinationPort(c4.getDestinationPort());       
-                        l4.setSequence(c4.getSequence());
-                        l4.setAcknowledge(c4.getAcknowledge());                          
-                        l4.setFlags(c4.getFlags());                        
-                        l4.setWindowSize(c4.getWindowSize());
-                        l4.setDataOffset(c4.getDataOffset());
-                        l4.setOptions(c4.getOptions());
-                        l4.setChecksum(c4.getChecksum());
-                        l4.setTcpChecksum(c4.getTcpChecksum());         
-                        
-                        l3.setPayload(l4);
-                        l2.setPayload(l3);
-                        byte[] serializedData = l2.serialize();
-                        
-                        OFPacketOut po = sw.getOFFactory().buildPacketOut()
-                                           .setData(serializedData)
-                                           .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.of(userPort), 0xffFFffFF)))
-                                           .setInPort(OFPort.of(s1Port))
-                                           .build();
-                        
-                        
-                        if(c4.getAcknowledge() == l4.getAcknowledge()) {
-                            logger.info("if1: ack short " + (short) c4.getAcknowledge());
-                            logger.info("if1: ack int " + (int) c4.getAcknowledge());
-                            logger.info("if1: ack long " + (long) c4.getAcknowledge());
-                            logger.info("if1: ack byte " + (byte) c4.getAcknowledge());
-                        }
-                        if(c4.getDestinationPort() == l4.getDestinationPort()) {
-                            logger.info("if2: dstPort " + c4.getDestinationPort());
-                        }
-                        if(c3.getDestinationAddress() == l3.getDestinationAddress()) {
-                            logger.info("if3: dstAddress " + c3.getDestinationAddress());
-                        }*/
                     }
                 }
 
                 /* Pega header HTTP do payload do TCP */
-                Data dt = (Data)tcp.getPayload();
+                Data dt = (Data) tcp.getPayload();
                 byte[] txt = dt.getData();
                 String headerHttp = new String(txt);
                 
@@ -301,6 +250,16 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                     http.setHTTPMethod(HTTPMethod.HEAD);
                 } else if (method.compareTo("GET") == 0) {
                     http.setHTTPMethod(HTTPMethod.GET);
+                } else if(method.compareTo("HTTP/1.1") == 0 && copyPartial == false) {
+                    // se for um HTTP Partial Content
+                    // para ser enviado juntamente com o ACK para o segundo usuario
+                    String partialStr[] = arr[2].split(" ", 3);
+                    String partial = partialStr[0];
+                    
+                    if (partial.compareTo("Partial") == 0) {
+                        copyPartial = true;
+                        httpPartial = (Ethernet) eth.clone();
+                    }
                 } else {
                     http.setHTTPMethod(HTTPMethod.NONE);
                 }
@@ -493,7 +452,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 /******************** Tratamento de mensagens do segundo usuário **************************/
                                 /* Cria regra anulando os proximos ACKs do segundo usuário */
                                 OFFlowAdd flowNullTCP = fluxoNullTCP(createMatchNull(sw, TCP_PORT, cntx, srcIp, dstIp), my13Factory, actionsNull);
-                                //sw.write(flowNullTCP);
+                                sw.write(flowNullTCP);
                                 
                                 /* Criação do pacote de resposta ACK (Servidor -> Cliente 2) para interromper o envio do request do cliente */
                                 Ethernet l2 = new Ethernet();
@@ -501,20 +460,18 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 l2.setDestinationMACAddress(srcMac);                // Destino do pacote: MAC Cliente (srcMac)
                                 l2.setEtherType(EthType.IPv4);
                                 l2.setParent(eth);
-                                
                                 IPv4 l3 = (IPv4) new IPv4();
                                 l3.setSourceAddress(dstIp);                         // Origem do pacote: IP Server (dstIp)
                                 l3.setDestinationAddress(srcIp);                    // Destino do pacote: IP Cliente (srcIp)
-                                l3.setTtl((byte) 69);
+                                l3.setTtl((byte) 111);
                                 l3.setProtocol(IpProtocol.TCP);
                                 l3.setFlags((byte) 0x02);
                                 l3.setChecksum((short) 0);
                                 l3.setDiffServ((byte) 0x00);
-                                
                                 TCP l4 = (TCP) new TCP();
                                 l4.setSourcePort(TransportPort.of(5001));           // Origem do pacote: Porta Server (dstPort) 
                                 l4.setDestinationPort(tcp.getSourcePort());         // Destino do pacote: Porta Cliente (srcPort)
-                                l4.setSequence(tcp.getAcknowledge());                         // Valor 5028c134 = 1 capturado pelo wireshark
+                                l4.setSequence(tcp.getAcknowledge());               // Valor 5028c134 = 1 capturado pelo wireshark
                                 l4.setAcknowledge(0x5028c235);                      // Valor 5028c235 = 258 capturado como ack = 258 no wireshark
                                 l4.setFlags((short) 0x010);                         // Sinaliza que é um pacote ACK
                                 l4.setWindowSize((short) 59);
@@ -522,34 +479,40 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 l4.setOptions(options);
                                 l4.setChecksum((short) 0);
                                 l4.setUrgentPointer((short) 0);
-                                l4.setTcpChecksum((short) 0);
-                                
-                                //Data l7 = new Data();
-                                //l7.setData(new byte[1000]);                 
+                                l4.setTcpChecksum((short) 0);                
                                 
                                 l3.setPayload(l4);
                                 l2.setPayload(l3);
                                 //l4.setPayload(l7);
-                                byte[] serializedData = l2.serialize();
+                                byte[] serializedDataAck = l2.serialize();
                                 
-                                //  Utilizar se for fazer a copia do ACK:
-                                /*IPv4 l3 = (IPv4) copiaAck.getPayload();
-                                TCP l4 = (TCP) l3.getPayload();
-                                copiaAck.setDestinationMACAddress(srcMac);
-                                l3.setDestinationAddress(srcIp);
-                                l3.setTtl((byte) 111);
-                                l4.setDestinationPort(srcPort);
-                                l3.setPayload(l4);
-                                copiaAck.setPayload(l3);
-                                byte[] serializedData = copiaAck.serialize();*/
+                                // Modificação do pacote Partial Content:
+                                IPv4 l3partial = (IPv4) httpPartial.getPayload();
+                                TCP l4partial = (TCP) l3partial.getPayload();
+                                httpPartial.setDestinationMACAddress(srcMac);
+                                l3partial.setDestinationAddress(srcIp);
+                                l3partial.setTtl((byte) 111);
+                                l4partial.setDestinationPort(srcPort);
+                                l4partial.setAcknowledge(0x5028c235);
+                                l4partial.setSequence(0xa1f32397);
+                                l3partial.setPayload(l4partial);
+                                httpPartial.setPayload(l3partial);
+                                byte[] serializedDataPartial = httpPartial.serialize();
                                 
-                                OFPacketOut po = sw.getOFFactory().buildPacketOut()
-                                                   .setData(serializedData)
-                                                   .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.of(userPort), 0xffFFffFF)))
-                                                   .setInPort(OFPort.of(s1Port))
-                                                   .build();
+                                OFPacketOut poAck = sw.getOFFactory().buildPacketOut()
+                                                    .setData(serializedDataAck)
+                                                    .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.of(userPort), 0xffFFffFF)))
+                                                    .setInPort(OFPort.of(s1Port))
+                                                    .build();
                                 
-                                sw.write(po);
+                                OFPacketOut poPartial = sw.getOFFactory().buildPacketOut()
+                                                        .setData(serializedDataPartial)
+                                                        .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.of(userPort), 0xffFFffFF)))
+                                                        .setInPort(OFPort.of(s1Port))
+                                                        .build();
+                                
+                                sw.write(poAck);
+                                sw.write(poPartial);
                                 /***********************************************************************************************/
                              
                                 /* Armazena as informações do segundo usuário para modificação do cabeçalho em ModifyPacketTCP */
