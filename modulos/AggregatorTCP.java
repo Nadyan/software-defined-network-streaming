@@ -433,7 +433,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                     l4.setDestinationPort(tcp.getSourcePort());         // Destino do pacote: Porta Cliente (srcPort)
                                     l4.setSequence(tcp.getAcknowledge());             
                                     l4.setAcknowledge(tcp.getSequence() + 
-                                                      (ipv4.getTotalLength() - ipv4.getHeaderLength() - 32 + 1 - 16));       // -16 para testes                 
+                                                      (ipv4.getTotalLength() - ipv4.getHeaderLength() - 32 + 1 - 16));    // TODO: verificar os valores                
                                     l4.setFlags((short) 0x010);                         // Sinaliza que é um pacote ACK
                                     l4.setWindowSize((short) 59);
                                     //l4.setDataOffset((byte) 5);
