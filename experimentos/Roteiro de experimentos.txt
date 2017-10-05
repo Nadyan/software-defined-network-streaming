@@ -1,0 +1,35 @@
+TODO LIST:
+
+    [FEITO] SCRIPT PARA MEDIR A VAZAO
+
+    ----------------------------------------------------
+
+    [     ] FAZER EXPERIMENTO1 SEM SDN E MEDIR A VAZAO COM SCRIPT
+
+    [     ] FAZER EXPERIMENTO1 COM SDN E MEDIR A VAZAO COM SCRIPT
+
+    ----------------------------------------------------
+
+    [     ] FAZER EXPERIMENTO2 SEM SDN, COM TRES VIDEOS DIFERENTES E MEDIR A VAZAO
+    
+    [     ] FAZER EXPERIMENTO2 COM SDN, COM TRES VIDEOS DIFERENTES E MEDIR A VAZAO
+
+    ----------------------------------------------------
+
+    [     ] FAZER EXPERIMENTO3 SEM SDN, COM TRES VIDEOS DIFERENTES E MEDIR A VAZAO
+
+    [     ] FAZER EXPERIMENTO3 COM SDN, COM TRES VIDEOS DIFERENTES E MEDIR A VAZAO
+
+    ----------------------------------------------------
+
+    [     ] MONTAR GRAFICO EXPERIMENTO1 SEM SDN
+
+    [     ] MONTAR GRAFICO EXPERIMENTO1 COM SDN
+
+    [     ] MONTAR GRAFICO EXPERIMENTO2 SEM SDN
+
+    [     ] MONTAR GRAFICO EXPERIMENTO2 COM SDN
+
+    [     ] MONTAR GRAFICO EXPERIMENTO3 SEM SDN
+
+    [     ] MONTAR GRAFICO EXPERIMENTO3 COM SDN
