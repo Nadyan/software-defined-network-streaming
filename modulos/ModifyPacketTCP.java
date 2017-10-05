@@ -64,6 +64,9 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
     private IFloodlightProviderService floodlightProvider;
     private static Logger logger;
     
+    private boolean sequenciaInit = false;
+    private int sequencia;
+    
     @Override
     public String getName() {
         return ModifyPacketTCP.class.getSimpleName();
@@ -126,6 +129,13 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
          * com as informações do segundo usuário */
         
         if (AggregatorTCP.headerInfo.getFlag()) {
+
+            if (sequenciaInit == false) {
+                /* Inicio do Sequence Number */
+                
+                sequencia = AggregatorTCP.partialLen + 1;
+                sequenciaInit = true;   // entra apenas na primeira vez
+            }
             
             Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
             
@@ -152,7 +162,7 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
                             TCP tcp = (TCP) ipv4.getPayload();
                             
                             if (tcp.getDestinationPort().equals(AggregatorTCP.originalUserInfo.getClientPort())    // Origem servidor
-                                    && tcp.getFlags() == (short) 0x018) {                                          // [PSH, ACK]
+                                    && (tcp.getFlags() == (short) 0x018 || tcp.getFlags() == (short) 0x010)) {     // [PSH, ACK] ou [ACK]
                                 
                                 /* Se for um pacote de video [PSH, ACK] vindo do servidor */
                                 
@@ -165,8 +175,8 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
                                 eth2.setDestinationMACAddress(AggregatorTCP.headerInfo.getClientMac());
                                 ipv42.setDestinationAddress(AggregatorTCP.headerInfo.getClientIp());
                                 tcp2.setDestinationPort(AggregatorTCP.headerInfo.getClientPort());
-                                
-                                /* TODO: Montar mecanismo de sequencia e ack dos pacotes para o segundo usuario */
+                                tcp2.setSequence(sequencia);  // muda a cada pacote enviado de acordo com o calculo
+                                tcp2.setAcknowledge(AggregatorTCP.headerInfo.getAck()); // sempre o mesmo
                                
                                 /* Remonta o pacote */
                                 eth2.setPayload(ipv42);
@@ -182,7 +192,10 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
                                 
                                 /* Escreve o Packet-out no switch */
                                 sw.write(po);
-                                logger.info("Pacote duplicado, destinos: " + AggregatorTCP.originalUserInfo.getClientIp() + " e " + AggregatorTCP.headerInfo.getClientIp());
+                                /*  Calculo do proximo numero de sequencia */
+                                int tcpLen = ipv4.getTotalLength() - ipv4.getHeaderLength() - 32;   // 32 = tcp header length
+                                sequencia += tcpLen; // Encontrar como pegar esse length
+                                logger.info("Pacote duplicado, seq: " + sequencia);
                             }
                         }
                     }

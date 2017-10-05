@@ -92,6 +92,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
     public static CompleteAddress originalUserInfo;
     public static Ethernet copiaAck;
     public static Ethernet httpPartial;
+    public static int partialLen;
     public static boolean ackCopiado = false;
     public static boolean copyPartial = false;
     public static boolean flag = false;
@@ -187,19 +188,19 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
         if (AggregatorTCP.headerInfo.getFlag() == false) {
         
             Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
-            
+                
             MacAddress srcMac = eth.getSourceMACAddress();              // MAC cliente
             MacAddress dstMac = eth.getDestinationMACAddress();         // MAC server
-            
+                
             if (eth.getEtherType() == EthType.IPv4) {
-                
+                    
                 /* Pacote IPv4 */
-                
+                    
                 IPv4 ipv4 = (IPv4) eth.getPayload();
-                
+                    
                 IPv4Address srcIp = ipv4.getSourceAddress();            // IP cliente
                 IPv4Address dstIp = ipv4.getDestinationAddress();       // IP server
-                 
+                     
                 if (srcIp.equals(ipUser1) == true) {                     // Porta do Switch para cada usuário
                     userPort = u1Port;
                 } else if (srcIp.equals(ipUser2) == true) {
@@ -207,23 +208,23 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                 } else if (srcIp.equals(ipUser3) == true) {
                     userPort = u3Port;
                 }
-                
+                    
                 if (ipv4.getProtocol() == IpProtocol.TCP) {
-                    
-                    /* Pacote TCP */
-                    
-                    TCP tcp = (TCP) ipv4.getPayload();
-                    
-                    if (ackCopiado == false && tcp.getFlags() == (short) 0x10 && eth.getSourceMACAddress().equals(macServer1)) { 
                         
+                    /* Pacote TCP */
+                        
+                    TCP tcp = (TCP) ipv4.getPayload();
+                        
+                    if (ackCopiado == false && tcp.getFlags() == (short) 0x10 && eth.getSourceMACAddress().equals(macServer1)) { 
+                            
                         // if utilizado para copiar o pacote ACK == (16 ou 0x10)
                         // de origem no servidor que é a resposta ao GET do cliente
-                        
+                            
                         if (getAck == 1) {     // Se ja pegou o GET e agora é o ACK
                             copiaAck = (Ethernet) eth.clone();
                             ackCopiado = true;
                             getAck++;
-                            
+                                
                             IPv4 c3 = (IPv4) copiaAck.getPayload();
                             TCP c4 = (TCP) c3.getPayload();
                             offset = c4.getDataOffset();
@@ -231,59 +232,64 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                             acknowledge = c4.getAcknowledge();
                         }
                     }
-    
+        
                     /* Pega header HTTP do payload do TCP */
                     Data dt = (Data) tcp.getPayload();
                     byte[] txt = dt.getData();
                     String headerHttp = new String(txt);
-                    
+                        
                     /* Divisão do header em 3 partes: Método, URI e resto */
                     String arr[] = headerHttp.split(" ", 3);
                     String method = arr[0];
                     String videoId;
-                    
+                        
                     HTTP http = new HTTP();
-                    
+                        
                     /* Identificação do método da requisição HTTP */
                     if (method.compareTo("HEAD") == 0) {
                         http.setHTTPMethod(HTTPMethod.HEAD);
                     } else if (method.compareTo("GET") == 0) {
                         http.setHTTPMethod(HTTPMethod.GET);
                     } else if(method.compareTo("HTTP/1.1") == 0 && copyPartial == false) {
-                        /* se for um HTTP Partial Content
+                        /* se for um HTTP Partial Content, copia
                            para ser enviado juntamente com o ACK para o segundo usuario */
                         String partialStr[] = arr[2].split(" ", 3);
                         String partial = partialStr[0];
-                        
+                            
                         if (partial.compareTo("Partial") == 0) {
                             copyPartial = true;
                             httpPartial = (Ethernet) eth.clone();
+                            
+                            /* Tamanho do pacote Partial Content que marca o inicio do Seq Number de envio
+                               para ser utilizado em ModifyPacketTCP */
+                            partialLen = tcp.getSequence() + 
+                                         (ipv4.getTotalLength() - ipv4.getHeaderLength() - 48);
                         }
                     } else {
                         http.setHTTPMethod(HTTPMethod.NONE);
                     }
-                    
+                       
                     if (http.getHTTPMethod() == HTTPMethod.HEAD) {
-                        
+                            
                         /* Pacote HTTP com método HEAD, informando o vídeo que será requisitado
                          *
                          * Adiciona na lista o HEAD do video que será requisitado
                          * para comparar com o GET posteriormente 
                          */
-                        
+                            
                         videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);    // Pega apenas o ID do video pelo URI
-                        
+                            
                         logger.info("---------- HEAD recebido ----------");
                         logger.info("URI: " + arr[1]);
                         logger.info("VideoId: " + videoId);
-                        
+                            
                         Request novoHead = new Request(videoId, userPort);
                         gets.add(novoHead);
-                        
+                            
                         return Command.CONTINUE;
-                        
+                            
                     } else if (http.getHTTPMethod() == HTTPMethod.GET && gets.isEmpty() == false) {
-                       
+                           
                         /* Se for um GET de um HEAD anterior
                          *
                          * Pacote HTTP com método GET, requisitando o vídeo.
@@ -291,59 +297,59 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                          * que será enviado o vídeo é a porta na qual saiu o GET, 
                          * por isso, não é possível analisar a requisição pelo HEAD.
                          */
-                        
+                            
                         TransportPort srcPort = tcp.getSourcePort();    // porta cliente de origem do get
                         TransportPort tcpTranspPort = srcPort;          // porta do cliente que será enviado o video
-                        
+                            
                         String uri = arr[1];
                         videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
                         //String resto = arr[2];
-                        
+                            
                         if (requests.isEmpty() == false && requests.get(0).getPort() == userPort 
                                                         && requests.get(0).getTcpPort() != tcpTranspPort) {
-                            
+                                
                             /* Se for um GET de reconexao, atualiza a porta TCP do request */
-                            
+                                
                             Request atualiza = new Request(requests.get(0).getVideoId(), 
                                                            requests.get(0).getMacAddress(),
                                                            requests.get(0).getIpAddress(),
                                                            requests.get(0).getPort(),
                                                            tcpTranspPort);
-                            
+                                
                             requests.set(0, atualiza);
                             logger.info("Porta TCP atualizada para o usuario " + requests.get(0).getIpAddress());
                         }
-    
+        
                         if (gets.get(0).getVideoId().equals(videoId)) {
-                            
-                            /* Se for o GET correspondente ao HEAD */
                                 
+                            /* Se for o GET correspondente ao HEAD */
+                                    
                             logger.info("--- GET correspondente recebido ---");
                             //logger.info("Method: " + method);
                             logger.info("URI: " + uri);
                             logger.info("VideoId: " + videoId);
-                            
+                                
                             if (videosInTraffic.contains(videoId) == false) {
-                                
+                                    
                                 getAck++;    // Variavel de controle para a copia do pacote ACK
-                                
+                                    
                                 /* Se ainda não havia uma transferência do vídeo requisitado */
-                    
+                        
                                 Request novoRequest = new Request(videoId, srcMac, srcIp, userPort, tcpTranspPort);
-                                
+                                    
                                 videosInTraffic.add(videoId);
                                 requests.add(novoRequest);
                                 logger.info("Requisição nova " + videoId + " de " + srcIp);
-                                
+                                    
                                 return Command.CONTINUE;
-                                
+                                    
                             } else {
-                                
+                                    
                                 /*  Se o vídeo requisitado já estava sendo transmitido, agrega os dois fluxos
                                  *  - Primeiro usuário: Usuário que requisitou o vídeo inicialmente; e
                                  *  - Segundo usuário: Usuário que requisitou o vídeo quando o mesmo já estava sendo transmitido.
                                  */
-                                
+                                    
                                 int index = -1;
                                 Request searchKey = new Request(videoId);
                                 index = Collections.binarySearch(requests, searchKey, new Comparador());    // Procura a posição na lista do vídeo
@@ -354,53 +360,53 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                 MacAddress originalMac = requests.get(index).getMacAddress();               // Recupera MAC do primeiro usuário
                                 int originalPort = requests.get(index).getPort();                           // Recupera Porta do primeiro usuário
                                 TransportPort originalTcpTranspPort = requests.get(index).getTcpPort();     // Recupera Porta TCP do primeiro usuario
-    
-                                if (originalIp.equals(srcIp) == false && repeat == false) {
         
+                                if (originalIp.equals(srcIp) == false && repeat == false) {
+            
                                     /* Se for uma requisição de um mesmo video porém de outro cliente */
-    
+        
                                     /* Inicio da montagem dos fluxos.
                                      * OBS: O Fluxo com dois outputs (server -> cliente) não é necessário, 
                                      * apenas o fluxo redirecionando os pacotes de vídeos sempre para o controlador para ser processado
                                      */
-                                    
+                                        
                                     OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
                                     OFActions actions = my13Factory.actions();
                                     OFOxms oxms = my13Factory.oxms();
-                                    
+                                        
                                     List<OFAction> actionsFrom = new ArrayList<OFAction>();                  // Lista de actions para o fluxo do server para o cliente
                                     List<OFAction> actionsTo = new ArrayList<OFAction>();                    // Lista de actions para o fluxo do cliente para o server (ACK)
                                     List<OFAction> actionsNull = new ArrayList<OFAction>();                  // Lista nula para fazer drop de pacotes
-                                    
+                                        
                                     OFActionOutput outputController = actions.output(OFPort.CONTROLLER, Integer.MAX_VALUE);
                                     actionsFrom.add(outputController);  // todo pacote de video deve ser encaminhado para o controller para duplicação,
                                                                         // nao é necessario setar a regra para duas saídas como foi elaborado inicialmente
                                                                         // por conta da necessidade de duplicar o pacote modificando o cabeçalho do segundo
-                                    
+                                        
                                     OFFlowAdd flowFromTCP = fluxoTCP(createMatchFromPacket(sw, originalTcpTranspPort, cntx, originalIp, dstIp), my13Factory, actionsFrom);
-                                    
+                                        
                                     /* Montagem do fluxo cliente -> server (ACK), apenas o primeiro usuario responde */
                                     /* Set do IP do server */
                                     OFActionSetField setDstIpS1 = actions.buildSetField()
                                                                  .setField(oxms.buildIpv4Dst()
                                                                  .setValue(dstIp)
                                                                  .build()).build();
-                                    
+                                        
                                     /* Set do MAC do server */
                                     OFActionSetField setDstMacS1 = actions.buildSetField()
                                                                   .setField(oxms.buildEthDst()
                                                                   .setValue(dstMac)
                                                                   .build()).build();
-                                    
+                                        
                                     /* Set da porta de saída do switch para o server */
                                     OFActionOutput outputServer1 = actions.output(OFPort.of(s1Port), Integer.MAX_VALUE);
-                                    
+                                        
                                     actionsTo.add(setDstIpS1);
                                     actionsTo.add(setDstMacS1);
                                     actionsTo.add(outputServer1);
-                                                                
+                                                                    
                                     OFFlowAdd flowToTCP = fluxoTCP(createMatchToPacket(sw, TCP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo);
-                                    
+                                        
                                     /* Escrita das regras na tabela de fluxos */
                                     sw.write(flowFromTCP);  // Video
                                     sw.write(flowToTCP);    // ACK
@@ -408,12 +414,12 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                     logger.info("Receptores nas portas: " + originalPort + " e " + userPort);
                                     gets.clear();
                                     repeat = true;
-                                    
+                                        
                                     /******************** Tratamento de mensagens do segundo usuário **************************/
                                     /* Cria regra anulando os proximos ACKs do segundo usuário */
                                     OFFlowAdd flowNullTCP = fluxoNullTCP(createMatchNull(sw, TCP_PORT, cntx, srcIp, dstIp), my13Factory, actionsNull);
                                     sw.write(flowNullTCP);
-                                    
+                                        
                                     /* Criação do pacote de resposta ACK (Servidor -> Cliente 2) para interromper o envio do request do cliente */
                                     Ethernet l2 = new Ethernet();
                                     l2.setSourceMACAddress(dstMac);                     // Origem do pacote: MAC Server (dstMac)
@@ -432,20 +438,17 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                     l4.setSourcePort(TransportPort.of(5001));           // Origem do pacote: Porta Server (dstPort) 
                                     l4.setDestinationPort(tcp.getSourcePort());         // Destino do pacote: Porta Cliente (srcPort)
                                     l4.setSequence(tcp.getAcknowledge());             
-                                    l4.setAcknowledge(tcp.getSequence() + 
-                                                      (ipv4.getTotalLength() - ipv4.getHeaderLength() - 32 + 1 - 16));    // TODO: verificar o valor 16          
+                                    l4.setAcknowledge(tcp.getSequence() + (ipv4.getTotalLength() - ipv4.getHeaderLength() - 48 + 1));   // seq + tcp segment len                      
                                     l4.setFlags((short) 0x010);                         // Sinaliza que é um pacote ACK
                                     l4.setWindowSize((short) 59);
-                                    //l4.setDataOffset((byte) 5);
-                                    //l4.setOptions(options);
                                     l4.setChecksum((short) 0);
                                     l4.setUrgentPointer((short) 0);
                                     l4.setTcpChecksum((short) 0);                
-                                    
+                                        
                                     l3.setPayload(l4);
                                     l2.setPayload(l3);
                                     byte[] serializedDataAck = l2.serialize();
-                                    
+                                       
                                     /* Modificação do pacote Partial Content: */
                                     IPv4 l3partial = (IPv4) httpPartial.getPayload();
                                     TCP l4partial = (TCP) l3partial.getPayload();
@@ -453,29 +456,28 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                     l3partial.setDestinationAddress(srcIp);
                                     l3partial.setTtl((byte) 111);
                                     l4partial.setDestinationPort(srcPort);
-                                    l4partial.setAcknowledge(tcp.getSequence() + 
-                                                             (ipv4.getTotalLength() - ipv4.getHeaderLength() - 32 + 1 - 16));
+                                    l4partial.setAcknowledge(tcp.getSequence() + (ipv4.getTotalLength() - ipv4.getHeaderLength() - 48 + 1));
                                     l4partial.setSequence(tcp.getAcknowledge());
                                     l3partial.setPayload(l4partial);
                                     httpPartial.setPayload(l3partial);
                                     byte[] serializedDataPartial = httpPartial.serialize();
-                                    
+                                        
                                     OFPacketOut poAck = sw.getOFFactory().buildPacketOut()
                                                         .setData(serializedDataAck)
                                                         .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.of(userPort), 0xffFFffFF)))
                                                         .setInPort(OFPort.of(s1Port))
                                                         .build();
-                                    
+                                        
                                     OFPacketOut poPartial = sw.getOFFactory().buildPacketOut()
                                                             .setData(serializedDataPartial)
                                                             .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.of(userPort), 0xffFFffFF)))
                                                             .setInPort(OFPort.of(s1Port))
                                                             .build();
-                                    
+                                        
                                     sw.write(poAck);        // Envio do ACK
                                     sw.write(poPartial);    // Envio do Partial Content
                                     /***********************************************************************************************/
-                                 
+                                     
                                     /* Armazena as informações do segundo usuário para modificação do cabeçalho em ModifyPacketTCP */
                                     headerInfo.setServerMac(dstMac);                       
                                     headerInfo.setClientMac(srcMac);                       
@@ -486,24 +488,25 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                     headerInfo.setClientPort(srcPort);
                                     headerInfo.setFlag(true);                           /* Flag que indica que o fluxo foi agregado para
                                                                                            iniciar a duplicacao do pacote em ModifyPacketTCP */
-                                    
+                                    headerInfo.setAck(l4.getAcknowledge());
+                                        
                                     /* Armazena as informações do primeiro usuário para verificações em ModifyPacketTCP */
                                     originalUserInfo.setClientIp(originalIp);
                                     originalUserInfo.setClientMac(originalMac);
                                     originalUserInfo.setClientPort(originalTcpTranspPort);
-                                    
+                                        
                                     /*  Barra o pacote para ele nao seguir para o servidor,
-                                     *  pois já será transmitido para o segundo usuário pelo
-                                     *  fluxo que foi instalado, que possui saida para o primeiro
-                                     *  e segundo usuário
-                                     */
+                                    *  pois já será transmitido para o segundo usuário pelo
+                                    *  fluxo que foi instalado, que possui saida para o primeiro
+                                    *  e segundo usuário
+                                    */
                                     return Command.STOP;
-                                    
+                                        
                                 } else {
                                     logger.info("GET repetido, fluxos nao agregados por ser o mesmo cliente");
                                     return Command.CONTINUE;
                                 }
-                            }
+                           }    
                         } else {
                             return Command.CONTINUE;
                         }

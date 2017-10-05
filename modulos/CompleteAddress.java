@@ -17,7 +17,10 @@ public class CompleteAddress {
     public IPv4Address serverIp;      
     public IPv4Address clientIp;          
     public TransportPort serverPort;     
-    public TransportPort clientPort;      
+    public TransportPort clientPort;
+    public boolean flag;
+    public int switchPort;
+    public int ack;
     
     /* Construtor */
     public CompleteAddress(MacAddress serverMac, MacAddress clientMac,
@@ -35,7 +38,7 @@ public class CompleteAddress {
     public CompleteAddress() {}
     
     /* Getters */
-    public MacAddress getSeverMac() {
+    public MacAddress getServerMac() {
         return serverMac;
     }
     
@@ -59,9 +62,25 @@ public class CompleteAddress {
         return clientPort;
     }
     
+    public boolean getFlag() {
+        return flag;
+    }
+    
+    public int getSwitchPort() {
+        return switchPort;
+    }
+    
+    public int getAck() {
+        return ack;
+    }
+    
     /* Setters */
     public void setServerMac(MacAddress serverMac) {
         this.serverMac = serverMac;
+    }
+    
+    public void setAck(int ack) {
+        this.ack = ack;
     }
     
     public void setClientMac(MacAddress clientMac) {
@@ -83,4 +102,13 @@ public class CompleteAddress {
     public void setClientPort(TransportPort clientPort) {
         this.clientPort = clientPort;
     }
+    
+    public void setFlag(boolean flag) {
+        this.flag = flag;
+    }
+    
+    public void setSwitchPort(int switchPort) {
+        this.switchPort = switchPort;
+    }
 }
+
