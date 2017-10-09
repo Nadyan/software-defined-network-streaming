@@ -93,6 +93,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
     public static Ethernet copiaAck;
     public static Ethernet httpPartial;
     public static int partialLen;
+    public static int partialSeq;
     public static boolean ackCopiado = false;
     public static boolean copyPartial = false;
     public static boolean flag = false;
@@ -257,13 +258,15 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                         String partial = partialStr[0];
                             
                         if (partial.compareTo("Partial") == 0) {
+                            /* Se for um partial do segundo usuário */
                             copyPartial = true;
                             httpPartial = (Ethernet) eth.clone();
                             
                             /* Tamanho do pacote Partial Content que marca o inicio do Seq Number de envio
-                               para ser utilizado em ModifyPacketTCP */
-                            partialLen = tcp.getSequence() + 
-                                         (ipv4.getTotalLength() - ipv4.getHeaderLength() - 48);
+                               para ser utilizado em ModifyPacketTCP 
+                               Sequencia + PartialLen = próximo número de sequência
+                             */
+                            partialLen = (int) ipv4.getTotalLength() - (int) ipv4.getHeaderLength() - 48;   // 48 = tcp header length
                         }
                     } else {
                         http.setHTTPMethod(HTTPMethod.NONE);
@@ -458,6 +461,7 @@ public class AggregatorTCP implements IFloodlightModule, IOFMessageListener {
                                     l4partial.setDestinationPort(srcPort);
                                     l4partial.setAcknowledge(tcp.getSequence() + (ipv4.getTotalLength() - ipv4.getHeaderLength() - 48 + 1));
                                     l4partial.setSequence(tcp.getAcknowledge());
+                                    partialSeq = l4partial.getSequence();
                                     l3partial.setPayload(l4partial);
                                     httpPartial.setPayload(l3partial);
                                     byte[] serializedDataPartial = httpPartial.serialize();

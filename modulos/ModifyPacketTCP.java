@@ -65,6 +65,7 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
     private static Logger logger;
     
     private boolean sequenciaInit = false;
+    private boolean dupGoodToGo = false;
     private int sequencia;
     
     @Override
@@ -128,74 +129,80 @@ public class ModifyPacketTCP implements IFloodlightModule, IOFMessageListener {
         /* Duplica o pacote de video e modifica o cabeçalho do clone
          * com as informações do segundo usuário */
         
-        if (AggregatorTCP.headerInfo.getFlag()) {
+        /* TODO: FAZER A VERIFICACAO DE QUE O CLIENTE RESPONDEU COM O ACK O PARTIAL CONTENT
+         * DEPOIS QUE O CLIENTE RESPONDER SET A FLAG dupGoodToGo COMO TRUE E COMECA A DUPLICACAO
+         *  */
+        
+        if (AggregatorTCP.headerInfo.getFlag() && dupGoodToGo == false) {   // mudar para duGoodToGo == true
 
-            if (sequenciaInit == false) {
+            if (sequenciaInit == false && AggregatorTCP.copyPartial == true) {
                 /* Inicio do Sequence Number */
                 
-                sequencia = AggregatorTCP.partialLen + 1;
+                sequencia = AggregatorTCP.partialSeq + AggregatorTCP.partialLen + 1;    // inicio sequencia + tamanho do pacote partial + 1
                 sequenciaInit = true;   // entra apenas na primeira vez
             }
             
-            Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
-            
-            MacAddress srcMac = eth.getSourceMACAddress();
-            MacAddress dstMac = eth.getDestinationMACAddress();
-            
-            if (dstMac.equals(AggregatorTCP.originalUserInfo.getClientMac())
-                && srcMac.equals(AggregatorTCP.headerInfo.getServerMac())) {
+            if (sequenciaInit == true) {
+                Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
                 
-                /* Se for um pacote com destino ao primeiro usuario que requisitou o conteudo */
+                MacAddress srcMac = eth.getSourceMACAddress();
+                MacAddress dstMac = eth.getDestinationMACAddress();
                 
-                if (eth.getEtherType() == EthType.IPv4) {
+                if (dstMac.equals(AggregatorTCP.originalUserInfo.getClientMac())
+                    && srcMac.equals(AggregatorTCP.headerInfo.getServerMac())) {
                     
-                    IPv4 ipv4 = (IPv4) eth.getPayload();
+                    /* Se for um pacote com destino ao primeiro usuario que requisitou o conteudo */
                     
-                    IPv4Address srcIp = ipv4.getSourceAddress();
-                    IPv4Address dstIp = ipv4.getDestinationAddress();
-                    
-                    if (dstIp.equals(AggregatorTCP.originalUserInfo.getClientIp())
-                        && srcIp.equals(AggregatorTCP.headerInfo.getServerIp())) {
+                    if (eth.getEtherType() == EthType.IPv4) {
                         
-                        if (ipv4.getProtocol() == IpProtocol.TCP) {
+                        IPv4 ipv4 = (IPv4) eth.getPayload();
+                        
+                        IPv4Address srcIp = ipv4.getSourceAddress();
+                        IPv4Address dstIp = ipv4.getDestinationAddress();
+                        
+                        if (dstIp.equals(AggregatorTCP.originalUserInfo.getClientIp())
+                            && srcIp.equals(AggregatorTCP.headerInfo.getServerIp())) {
                             
-                            TCP tcp = (TCP) ipv4.getPayload();
-                            
-                            if (tcp.getDestinationPort().equals(AggregatorTCP.originalUserInfo.getClientPort())    // Origem servidor
-                                    && (tcp.getFlags() == (short) 0x018 || tcp.getFlags() == (short) 0x010)) {     // [PSH, ACK] ou [ACK]
+                            if (ipv4.getProtocol() == IpProtocol.TCP) {
                                 
-                                /* Se for um pacote de video [PSH, ACK] vindo do servidor */
+                                TCP tcp = (TCP) ipv4.getPayload();
                                 
-                                /* Duplica o pacote nas tres camadas */
-                                Ethernet eth2 = (Ethernet) eth.clone(); // eth2 terá o cabeçalho alterado para encaminhamento ao segundo usuário
-                                IPv4 ipv42 = (IPv4) eth2.getPayload();
-                                TCP tcp2 = (TCP) ipv42.getPayload();
-                                
-                                /* Modifica os cabecalhos nas tres camadas */
-                                eth2.setDestinationMACAddress(AggregatorTCP.headerInfo.getClientMac());
-                                ipv42.setDestinationAddress(AggregatorTCP.headerInfo.getClientIp());
-                                tcp2.setDestinationPort(AggregatorTCP.headerInfo.getClientPort());
-                                tcp2.setSequence(sequencia);  // muda a cada pacote enviado de acordo com o calculo
-                                tcp2.setAcknowledge(AggregatorTCP.headerInfo.getAck()); // sempre o mesmo
-                               
-                                /* Remonta o pacote */
-                                eth2.setPayload(ipv42);
-                                ipv4.setPayload(tcp2);
-                                byte[] serializedData = eth2.serialize();
-                                
-                                /* Cria o Packet-out com cabeçalho modificado */
-                                OFPacketOut po = sw.getOFFactory().buildPacketOut()
-                                                   .setData(serializedData)
-                                                   .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.NORMAL, AggregatorTCP.headerInfo.getSwitchPort())))
-                                                   .setInPort(OFPort.CONTROLLER)
-                                                   .build();
-                                
-                                /* Escreve o Packet-out no switch */
-                                sw.write(po);
-                                /*  Calculo do proximo numero de sequencia */
-                                int tcpLen = ipv4.getTotalLength() - ipv4.getHeaderLength() - 32;   // 32 = tcp header length
-                                sequencia += tcpLen; // Encontrar como pegar esse length
-                                logger.info("Pacote duplicado, seq: " + sequencia);
+                                if (tcp.getDestinationPort().equals(AggregatorTCP.originalUserInfo.getClientPort())    // Origem servidor
+                                        && (tcp.getFlags() == (short) 0x018 || tcp.getFlags() == (short) 0x010)) {     // [PSH, ACK] ou [ACK]
+                                    
+                                    /* Se for um pacote de video [PSH, ACK] vindo do servidor */
+                                    
+                                    /* Duplica o pacote nas tres camadas */
+                                    Ethernet eth2 = (Ethernet) eth.clone(); // eth2 terá o cabeçalho alterado para encaminhamento ao segundo usuário
+                                    IPv4 ipv42 = (IPv4) eth2.getPayload();
+                                    TCP tcp2 = (TCP) ipv42.getPayload();
+                                    
+                                    /* Modifica os cabecalhos nas tres camadas */
+                                    eth2.setDestinationMACAddress(AggregatorTCP.headerInfo.getClientMac());
+                                    ipv42.setDestinationAddress(AggregatorTCP.headerInfo.getClientIp());
+                                    tcp2.setDestinationPort(AggregatorTCP.headerInfo.getClientPort());
+                                    tcp2.setSequence(sequencia);  // muda a cada pacote enviado de acordo com o calculo
+                                    tcp2.setAcknowledge(AggregatorTCP.headerInfo.getAck()); // sempre o mesmo
+                                   
+                                    /* Remonta o pacote */
+                                    eth2.setPayload(ipv42);
+                                    ipv4.setPayload(tcp2);
+                                    byte[] serializedData = eth2.serialize();
+                                    
+                                    /* Cria o Packet-out com cabeçalho modificado */
+                                    OFPacketOut po = sw.getOFFactory().buildPacketOut()
+                                                       .setData(serializedData)
+                                                       .setActions(Collections.singletonList((OFAction) sw.getOFFactory().actions().output(OFPort.NORMAL, AggregatorTCP.headerInfo.getSwitchPort())))
+                                                       .setInPort(OFPort.CONTROLLER)
+                                                       .build();
+                                    
+                                    /* Escreve o Packet-out no switch */
+                                    sw.write(po);
+                                    /*  Calculo do proximo numero de sequencia */
+                                    int tcpLen = (int) ipv4.getTotalLength() - (int) ipv4.getHeaderLength() - 32;   // 32 = tcp header length
+                                    sequencia += tcpLen;
+                                    logger.info("Pacote duplicado, seq: " + sequencia);
+                                }
                             }
                         }
                     }
