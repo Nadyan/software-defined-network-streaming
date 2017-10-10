@@ -1,0 +1,7 @@
+start:
+
+    $ /etc/init.d/apache2 start
+
+stop:
+    
+    /etc/init.d/apache2 stop

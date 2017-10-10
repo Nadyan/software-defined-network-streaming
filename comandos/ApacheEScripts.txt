@@ -1,0 +1,16 @@
+onde colocar os scripts:
+
+    $ /usr/lib/cgi-bin
+
+onde colcoar o html:
+
+    $ /var/www/html
+
+Log de erros:
+
+    $ /var/log/apache2
+
+
+No navegador:
+
+    127.0.0.1/videos.html
