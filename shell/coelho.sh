@@ -1,13 +1,20 @@
 #!/bin/bash
 
-IPCLI=10.0.0.2 #verificar como pega o IP do cliente requisintante
+# Nadyan Suriel Pscheidt - UDESC
+# Abordagem para Distribuição de Vídeo Baseada em Redes Definidas por Software
 
-# TODO: pega ip cliente 
+# IP do Cliente requisitante
+IPCLI=$REMOTE_ADDR
+NOMECLI=$REMOTE_USER
 
-#sudo vlc -vvv video.mp4 --sout '#rtp{mux=ts,dst=$IPCLI,sdp=sap,name="reste"}'
+# Cria a transmissão através do VLC utilizando RTP
+COMANDO="sudo vlc -vvv video.mp4 --sout '#rtp{mux=ts,dst='$IPCLI',sdp=sap}'"
+
+# Executa
+eval $COMANDO
 
 echo "Content-type: text/html"
 echo ""
 echo "<html><head><title>Coelho.mp4</title></head></body>"
-echo "Video Coelho.mp4 sendo enviado para o cliente $IPCLI"
+echo "Video Coelho.mp4 sendo enviado para o cliente $NOMECLI com IP $IPCLI"
 echo "</body></html>"
