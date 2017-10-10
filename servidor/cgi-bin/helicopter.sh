@@ -8,7 +8,7 @@ IPCLI=$REMOTE_ADDR
 NOMECLI=$REMOTE_USER
 
 # Cria a transmissão através do VLC utilizando RTP
-COMANDO="vlc -vvv helicopter.divx --sout '#rtp{mux=ts,dst='$IPCLI',sdp=sap}'"
+COMANDO="vlc -vvv videos/helicopter.divx --sout '#rtp{mux=ts,dst='$IPCLI',sdp=sap}'"
 
 # Executa
 eval $COMANDO
