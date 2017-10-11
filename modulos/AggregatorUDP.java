@@ -222,7 +222,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                         
                         /*  Se o vídeo requisitado já estava sendo transmitido, agrega os dois fluxos
                          *  - Primeiro usuário: Usuário que requisitou o vídeo inicialmente; e
-                         *  - Segundo usuário: Usuário que requisitou o vídeo quando o mesmo já estava sendo transmitido.
+                         *  - Segundo usuário: Usuário que requisitou o vídeo quando o mesmo já estava sendo transmitido
                          */
                 
                         int index = -1;
