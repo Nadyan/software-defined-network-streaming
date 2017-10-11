@@ -1,9 +1,18 @@
 
-    - No terminal do servidor
+    - No terminal 1 do servidor
 
         ~/SDN_VideoTransmission/servidor $ sudo python -m CGIHTTPServer 8000
 
-    - No terminal do cliente
+    - No terminal 2 do servidor 
+        
+        ~/SDN_VideoTransmission/servidor $ sudo python -m CGIHTTPServer 8001
+
+    - No terminal do cliente 1
 
         $ vlc rtp://:5004 (para abrir o vlc)
-        no navegador entrar em <ipserver>:8000/     
+        no navegador CHROME entrar em <ipserver>:8000/  
+        
+     - No terminal do cliente 2
+        
+        $ vlc rtp://:5004 (para abrir o vlc)
+        no navegador CHROMIUM entrar em <ipserver>:8001/ 
