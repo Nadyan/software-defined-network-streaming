@@ -68,6 +68,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
     private IFloodlightProviderService floodlightProvider;
     private static Logger logger;
     public static final TransportPort UDP_PORT = TransportPort.of(5004);
+    private boolean repeat = false;
     
     /*  Listas de requisições */
     protected List<Request> requests;
@@ -234,7 +235,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                         MacAddress originalMac = requests.get(index).getMacAddress();               // Recupera MAC do primeiro usuário
                         int originalPort = requests.get(index).getPort();                           // Recupera Porta do primeiro usuário
                         
-                        if (originalIp.equals(srcIp) == false) {
+                        if (originalIp.equals(srcIp) == false && repeat == false) {
                             
                             /* Se for uma requisição de um mesmo video porém de outro cliente */
 
@@ -280,11 +281,12 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                             actionsTo.add(setDstMACu2);
                             actionsTo.add(outputUser2);
                             
-                            OFFlowAdd flowTo = fluxoUDP(createMatch(sw, UDP_PORT, cntx, dstIp, srcIp), my13Factory, actionsTo, FlowModUtils.PRIORITY_HIGH);
+                            OFFlowAdd flowTo = fluxoUDP(createMatch(sw, UDP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo, FlowModUtils.PRIORITY_HIGH);
                             
                             sw.write(flowTo);
                             logger.info("Fluxos agregados para o request " + uri);
                             logger.info("Receptores nas portas: " + originalPort + " e " + userPort);
+                            //repeat = true;
                             
                             /*  Barra o pacote para ele nao seguir para o servidor,
                              *  pois já será transmitido para o segundo usuário pelo
@@ -326,7 +328,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                                 .setFlags(flags)
                                 .setActions(actions)
                                 .setBufferId(OFBufferId.NO_BUFFER)
-                                .setIdleTimeout(5)
+                                .setIdleTimeout(60)
                                 .setHardTimeout(0)
                                 .setMatch(match)
                                 .setCookie(U64.of(1L << 59))
@@ -352,3 +354,4 @@ class Comparador implements Comparator<Request> {
         }
     }
 }
+
