@@ -1,3 +1,20 @@
+/**
+ *    Copyright 2011, Big Switch Networks, Inc.
+ *    Originally created by David Erickson, Stanford University
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License"); you may
+ *    not use this file except in compliance with the License. You may obtain
+ *    a copy of the License at
+ *
+ *         http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ *    WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+ *    License for the specific language governing permissions and limitations
+ *    under the License.
+ **/
+
 package net.floodlightcontroller.aggregator;
 
 import java.util.ArrayList;
@@ -62,31 +79,22 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
      * identificação de fluxos redundantes, 
      * agregação de fluxos redundantes
      * e criação de regras na tabela de fluxos.
-     * 
      */
     
     private IFloodlightProviderService floodlightProvider;
     private static Logger logger;
     public static final TransportPort UDP_PORT = TransportPort.of(5004);
-    private boolean repeat = false;
     
     /*  Listas de requisições */
     protected List<Request> requests;
     protected List<String> videosInTraffic;
-    protected List<Request> gets;
     
     /* Endereços */
-    private IPv4Address ipServer1 = IPv4Address.of("10.0.0.1");
     private IPv4Address ipUser1 = IPv4Address.of("10.0.0.2");
     private IPv4Address ipUser2 = IPv4Address.of("10.0.0.3");
     private IPv4Address ipUser3 = IPv4Address.of("10.0.0.4");
-    private MacAddress macServer1 = MacAddress.of("00:00:00:00:00:01");
-    private MacAddress macUser1 = MacAddress.of("00:00:00:00:00:02");
-    private MacAddress macUser2 = MacAddress.of("00:00:00:00:00:03");
-    private MacAddress macUser3 = MacAddress.of("00:00:00:00:00:04");
     
     /* Portas */
-    private int s1Port = 4;
     private int u1Port = 1;
     private int u2Port = 2;
     private int u3Port = 3;
@@ -104,7 +112,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
 
     @Override
     public boolean isCallbackOrderingPostreq(OFType type, String name) {
-        /* Deve ser executado antes do Forwarding e ModifyPacketTCP */
+        /* Deve ser executado antes do módulo Forwarding */
         
         if (type.equals(OFType.PACKET_IN) && name.equals("forwarding")) {
             return true;
@@ -149,7 +157,6 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
         Ethernet eth = IFloodlightProviderService.bcStore.get(cntx, IFloodlightProviderService.CONTEXT_PI_PAYLOAD);
         
         MacAddress srcMac = eth.getSourceMACAddress();              // MAC cliente
-        MacAddress dstMac = eth.getDestinationMACAddress();         // MAC server
         
         if (eth.getEtherType() == EthType.IPv4) {
             
@@ -160,7 +167,8 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
             IPv4Address srcIp = ipv4.getSourceAddress();            // IP cliente
             IPv4Address dstIp = ipv4.getDestinationAddress();       // IP server
         
-            if (srcIp.equals(ipUser1) == true) {                     // Porta do Switch para cada usuário
+            /* Define qual porta do switch pertence ao usuário */
+            if (srcIp.equals(ipUser1) == true) {                    
                 userPort = u1Port;
             } else if (srcIp.equals(ipUser2) == true) {
                 userPort = u2Port;
@@ -200,10 +208,9 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                     
                     /* Pacote GET com a requisição */
                     
-                    TransportPort srcPort = tcp.getSourcePort();    // porta cliente de origem do get
-                    TransportPort tcpTranspPort = srcPort;          // porta do cliente que será enviado o video
+                    TransportPort srcPort = tcp.getSourcePort();    // Porta cliente de origem do get
+                    TransportPort tcpTranspPort = srcPort;          // Porta do cliente que será enviado o video
                         
-                    String uri = arr[1];
                     videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
                     
                     if (videosInTraffic.contains(videoId) == false) {
@@ -220,9 +227,9 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                         return Command.CONTINUE;      
                     } else {
                         
-                        /*  Se o vídeo requisitado já estava sendo transmitido, agrega os dois fluxos
-                         *  - Primeiro usuário: Usuário que requisitou o vídeo inicialmente; e
-                         *  - Segundo usuário: Usuário que requisitou o vídeo quando o mesmo já estava sendo transmitido
+                        /*  Se o vídeo requisitado já estava sendo transmitido, agrega os fluxos,
+                         *  criando uma regra que recebe o fluxo do primeiro usuário e encaminha para
+                         *  ele e os demais requisitantes do detrminado conteúdo.
                          */
                 
                         int index = -1;
@@ -235,20 +242,22 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                         MacAddress originalMac = requests.get(index).getMacAddress();               // Recupera MAC do primeiro usuário
                         int originalPort = requests.get(index).getPort();                           // Recupera Porta do primeiro usuário
                         
-                        if (originalIp.equals(srcIp) == false && repeat == false) {
+                        if (originalIp.equals(srcIp) == false) {
                             
                             /* Se for uma requisição de um mesmo video porém de outro cliente */
 
-                            /* Inicio da montagem dos fluxos.
-                             * OBS: O Fluxo com dois outputs (server -> cliente) não é necessário, 
-                             * apenas o fluxo redirecionando os pacotes de vídeos sempre para o controlador para ser processado
+                            /* Inicio da montagem da regra.
+                             * A regra possui as informações (MAC, IP e porta) dos clientes requisitantes.
+                             * Com isso, o fluxo UDP destinado ao primeiro usuário é direcionado para todas as portas
+                             * especificadas como OFActionOutput (primeiro usuário e demais requisitantes).
                              */
                             
                             OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
                             OFActions actions = my13Factory.actions();
                             OFOxms oxms = my13Factory.oxms();
                                 
-                            List<OFAction> actionsTo = new ArrayList<OFAction>();                  // Lista de actions para o fluxo do server para o cliente
+                            /* Lista que armazena as características da regra, como dados dos usuários e saídas */
+                            List<OFAction> actionsTo = new ArrayList<OFAction>(); 
                             
                             OFActionSetField setDstIPu2 = actions.buildSetField()
                                                                  .setField(oxms.buildIpv4Dst()
@@ -283,17 +292,28 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                             
                             OFFlowAdd flowTo = fluxoUDP(createMatch(sw, UDP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo, FlowModUtils.PRIORITY_HIGH);
                             
-                            sw.write(flowTo);
-                            logger.info("Fluxos agregados para o request " + uri);
-                            logger.info("Receptores nas portas: " + originalPort + " e " + userPort);
-                            //repeat = true;
+                            if (sw.write(flowTo)) {
+                                
+                                /* Se obter sucesso na escrita da regra */
+                                
+                                logger.info("Fluxos agregados para o request " + videoId);
+                                logger.info("Receptores nas portas: " + originalPort + " e " + userPort);
                             
-                            /*  Barra o pacote para ele nao seguir para o servidor,
-                             *  pois já será transmitido para o segundo usuário pelo
-                             *  fluxo que foi instalado, que possui saida para o primeiro
-                             *  e segundo usuário
-                             */
-                             return Command.STOP;
+                                /*  Barra o pacote para ele nao seguir para o servidor,
+                                 *  pois já será transmitido para o segundo usuário pela
+                                 *  regra que foi instalada, que possui saida para o primeiro
+                                 *  e segundo usuário
+                                 */
+                                return Command.STOP;
+                            } else {
+                                
+                                /* Se a escrita da regra falhar */
+                                
+                                logger.info("ERRO: Falha na agregação de fluxos para o request " + videoId 
+                                             + ", o conteúdo será transmitido sem agregação!");
+                                
+                                return Command.CONTINUE;
+                            }
                         }
                     }
                 }
@@ -340,11 +360,8 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
 }
 
 class Comparador implements Comparator<Request> {
-    
-    /* 
-     *  Classe para comparar os itens das listas,
-     *  tem como objetivo encontrar os itens
-     */
+     
+    /*  Classe para comparar os itens das listas. */
     
     public int compare(Request e1, Request e2) {
         if(e1.getVideoId() == e2.getVideoId()) {
