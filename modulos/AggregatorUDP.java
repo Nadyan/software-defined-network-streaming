@@ -19,8 +19,6 @@ package net.floodlightcontroller.aggregator;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.Collections;
-import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -207,9 +205,6 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                 if(http.getHTTPMethod() == HTTPMethod.GET) {
                     
                     /* Pacote GET com a requisição */
-                    
-                    TransportPort srcPort = tcp.getSourcePort();    // Porta cliente de origem do get
-                    TransportPort tcpTranspPort = srcPort;          // Porta do cliente que será enviado o video
                         
                     videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
                     
@@ -217,7 +212,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                             
                         /* Se ainda não havia uma transferência do vídeo requisitado */
                 
-                        Request novoRequest = new Request(videoId, srcMac, srcIp, userPort, tcpTranspPort);
+                        Request novoRequest = new Request(videoId, srcMac, srcIp, userPort);
                             
                         videosInTraffic.add(videoId);  
                         requests.add(novoRequest);   
@@ -231,89 +226,80 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                          *  criando uma regra que recebe o fluxo do primeiro usuário e encaminha para
                          *  ele e os demais requisitantes do detrminado conteúdo.
                          */
-                
-                        int index = -1;
-                        Request searchKey = new Request(videoId);
-                        index = Collections.binarySearch(requests, searchKey, new Comparador());    // Procura a posição na lista do vídeo
-                        if (index == -1) {
-                            logger.info("ERRO: ID de vídeo não encontrado");
-                        }
-                        IPv4Address originalIp = requests.get(index).getIpAddress();                // Recupera IP do primeiro usuário
-                        MacAddress originalMac = requests.get(index).getMacAddress();               // Recupera MAC do primeiro usuário
-                        int originalPort = requests.get(index).getPort();                           // Recupera Porta do primeiro usuário
                         
-                        if (originalIp.equals(srcIp) == false) {
+                        IPv4Address originalIp = srcIp;                                             // Valor de inicialização não necessariamente correto,
+                                                                                                    // mas necessário. É atualizado no laço for com o valor correto
+                        boolean getOriginal = false;
+                        int contador = 0;
+                        Request novoRequest = new Request(videoId, srcMac, srcIp, userPort);        // Adiciona o request na lista de requests
+                        requests.add(novoRequest);                                                  // para a montagem da regra com todos os usuarios
+                         
+                        /* Inicio da montagem da regra.
+                         * A regra possui as informações (MAC, IP e porta) dos clientes requisitantes.
+                         * Com isso, o fluxo UDP destinado ao primeiro usuário é direcionado para todas as portas
+                         * especificadas como OFActionOutput (primeiro usuário e demais requisitantes).
+                         */
                             
-                            /* Se for uma requisição de um mesmo video porém de outro cliente */
-
-                            /* Inicio da montagem da regra.
-                             * A regra possui as informações (MAC, IP e porta) dos clientes requisitantes.
-                             * Com isso, o fluxo UDP destinado ao primeiro usuário é direcionado para todas as portas
-                             * especificadas como OFActionOutput (primeiro usuário e demais requisitantes).
-                             */
-                            
-                            OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
-                            OFActions actions = my13Factory.actions();
-                            OFOxms oxms = my13Factory.oxms();
+                        OFFactory my13Factory = OFFactories.getFactory(OFVersion.OF_13);
+                        OFActions actions = my13Factory.actions();
+                        OFOxms oxms = my13Factory.oxms();
+                        List<OFAction> actionsTo = new ArrayList<OFAction>();   // Lista que armazena as caracteristicas da regra
                                 
-                            /* Lista que armazena as características da regra, como dados dos usuários e saídas */
-                            List<OFAction> actionsTo = new ArrayList<OFAction>(); 
-                            
-                            OFActionSetField setDstIPu2 = actions.buildSetField()
-                                                                 .setField(oxms.buildIpv4Dst()
-                                                                 .setValue(srcIp)
-                                                                 .build()).build();
-                            
-                            OFActionSetField setDstMACu2 = actions.buildSetField()
-                                                                  .setField(oxms.buildEthDst()
-                                                                  .setValue(srcMac)
-                                                                  .build()).build();
-                            
-                            OFActionSetField setDstIPu1 = actions.buildSetField()
-                                                                 .setField(oxms.buildIpv4Dst()
-                                                                 .setValue(originalIp)
-                                                                 .build()).build();
-                            
-                            OFActionSetField setDstMAC1 = actions.buildSetField()
-                                                                 .setField(oxms.buildEthDst()
-                                                                 .setValue(originalMac)
-                                                                 .build()).build();
-                            
-                            OFActionOutput outputUser1 = actions.output(OFPort.of(originalPort), Integer.MAX_VALUE);
-                            OFActionOutput outputUser2 = actions.output(OFPort.of(userPort), Integer.MAX_VALUE);
-                            
-                            actionsTo.add(setDstIPu1);
-                            actionsTo.add(setDstMAC1);
-                            actionsTo.add(outputUser1);
-                            
-                            actionsTo.add(setDstIPu2);
-                            actionsTo.add(setDstMACu2);
-                            actionsTo.add(outputUser2);
-                            
-                            OFFlowAdd flowTo = fluxoUDP(createMatch(sw, UDP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo, FlowModUtils.PRIORITY_HIGH);
-                            
-                            if (sw.write(flowTo)) {
+                        /* Criação da regra com um laço For que percorre a lista de requests e verifica todos os de mesmo videoId */
+                        for (int i = 0; i < requests.size(); i++) {
+                            if (requests.get(i).getVideoId().equals(videoId)) {
+                                /* Se for do mesmo videoId */
+                                    
+                                if (getOriginal == false) {
+                                    /* Armazena o IP do primeiro requisitante para criacao do match,
+                                     * que no caso é o usuário na qual o servidor está enviando o conteúdo */
+                                    originalIp = requests.get(i).getIpAddress();
+                                    getOriginal = true;
+                                }
+                                    
+                                OFActionSetField setDstIp = actions.buildSetField()
+                                                            .setField(oxms.buildIpv4Dst()
+                                                            .setValue(requests.get(i).getIpAddress())
+                                                            .build()).build();
+                                    
+                                OFActionSetField setDstMac = actions.buildSetField()
+                                                             .setField(oxms.buildEthDst()
+                                                             .setValue(requests.get(i).getMacAddress())
+                                                             .build()).build();
+                                    
+                                OFActionOutput outputUser = actions.output(OFPort.of(requests.get(i).getPort()), Integer.MAX_VALUE);
+                                    
+                                actionsTo.add(setDstIp);
+                                actionsTo.add(setDstMac);
+                                actionsTo.add(outputUser);
                                 
-                                /* Se obter sucesso na escrita da regra */
-                                
-                                logger.info("Fluxos agregados para o request " + videoId);
-                                logger.info("Receptores nas portas: " + originalPort + " e " + userPort);
-                            
-                                /*  Barra o pacote para ele nao seguir para o servidor,
-                                 *  pois já será transmitido para o segundo usuário pela
-                                 *  regra que foi instalada, que possui saida para o primeiro
-                                 *  e segundo usuário
-                                 */
-                                return Command.STOP;
-                            } else {
-                                
-                                /* Se a escrita da regra falhar */
-                                
-                                logger.info("ERRO: Falha na agregação de fluxos para o request " + videoId 
-                                             + ", o conteúdo será transmitido sem agregação!");
-                                
-                                return Command.CONTINUE;
+                                contador++;                                    // Quantidade de usuários recebendo o mesmo video
                             }
+                        }
+                            
+                        OFFlowAdd flowTo = fluxoUDP(createMatch(sw, UDP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo, FlowModUtils.PRIORITY_HIGH);
+                            
+                        if (sw.write(flowTo)) {
+                                
+                            /* Se obter sucesso na escrita da regra */
+                               
+                            logger.info("Fluxos agregados para o request " + videoId + " com " + contador + " receptores");
+                            
+                            /*  Barra o pacote para ele nao seguir para o servidor,
+                             *  pois já será transmitido para o usuário novo pela
+                             *  regra flowTo que foi instalada. 
+                             */
+                            return Command.STOP;
+                        } else {
+                                
+                            /* Se a escrita da regra falhar */
+                                
+                            logger.info("ERRO: Falha na agregação de fluxos para o request " + videoId 
+                                         + ", o conteúdo será transmitido sem agregação!");
+                                
+                            /* Como nao conseguiu criar a regra, transmite normalmente sem agragação.
+                             * O comando Continue irá enviar o request para o servidor */
+                            return Command.CONTINUE;
                         }
                     }
                 }
@@ -359,16 +345,6 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
     }
 }
 
-class Comparador implements Comparator<Request> {
-     
-    /*  Classe para comparar os itens das listas. */
-    
-    public int compare(Request e1, Request e2) {
-        if(e1.getVideoId() == e2.getVideoId()) {
-            return 1;  
-        } else {
-            return 0;
-        }
-    }
-}
+
+
 
