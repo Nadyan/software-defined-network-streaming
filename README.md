@@ -38,6 +38,10 @@ até o switch mais próximo dos usuários que realizaram a transmissão do conte
 
 ![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/experimentos/proposta.png)
 
+  A sequência de eventos é a seguinte:
+  
+ ![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/experimentos/sequencia.png)
+
   Com a abordagem proposta, espera-se uma maior escalabilidade do sistema no quesito quantidade de usuários
 simultâneos, justamente pela otimização dos fluxos evitando redundâncias de conteúdo no enlace de comunicação
 entre servidor e switch. Com isso, na abordagem proposta mais usuários conseguirão assistir conteúdos diferentes
