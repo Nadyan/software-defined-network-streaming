@@ -189,7 +189,6 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                 /* Divisão do header em 3 partes: Método, URI e resto */
                 String arr[] = headerHttp.split(" ", 3);
                 String method = arr[0];
-                String videoId;
 
                 HTTP http = new HTTP();
                 
@@ -206,7 +205,12 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                     
                     /* Pacote GET com a requisição */
                         
-                    videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
+                    String videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
+                    
+                    if (videoId.equals("favicon.ico")) {
+                        /* Se for um GET de icone, que nao nos interessa */
+                        return Command.CONTINUE;
+                    }
                     
                     if (videosInTraffic.contains(videoId) == false) {
                             
@@ -217,7 +221,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                         videosInTraffic.add(videoId);  
                         requests.add(novoRequest);   
                         
-                        logger.info("Requisição nova " + videoId + " de " + srcIp);
+                        logger.info("Requisição nova para " + videoId + " de " + srcIp);
                             
                         return Command.CONTINUE;      
                     } else {
@@ -230,7 +234,6 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                         IPv4Address originalIp = srcIp;                                             // Valor de inicialização não necessariamente correto,
                                                                                                     // mas necessário. É atualizado no laço for com o valor correto
                         boolean getOriginal = false;
-                        int contador = 0;
                         Request novoRequest = new Request(videoId, srcMac, srcIp, userPort);        // Adiciona o request na lista de requests
                         requests.add(novoRequest);                                                  // para a montagem da regra com todos os usuarios
                          
@@ -272,8 +275,6 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                                 actionsTo.add(setDstIp);
                                 actionsTo.add(setDstMac);
                                 actionsTo.add(outputUser);
-                                
-                                contador++;                                    // Quantidade de usuários recebendo o mesmo video
                             }
                         }
                             
@@ -283,7 +284,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                                 
                             /* Se obter sucesso na escrita da regra */
                                
-                            logger.info("Fluxos agregados para o request " + videoId + " com " + contador + " receptores");
+                            logger.info("Fluxos agregados para o request " + videoId);
                             
                             /*  Barra o pacote para ele nao seguir para o servidor,
                              *  pois já será transmitido para o usuário novo pela
