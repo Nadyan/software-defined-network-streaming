@@ -5,7 +5,7 @@
 # Script para a transmissão do vídeo helicopter.divx
 
 # Cria a transmissão através do VLC utilizando RTP
-COMANDO="vlc -vvv videos/helicopter.divx --sout '#rtp{mux=ts,dst='$IPCLI',sdp=sap}'"
+COMANDO="vlc -vvv videos/helicopter.divx --sout '#rtp{mux=ts,dst='$REMOTE_ADDR',sdp=sap}'"
 
 # Executa
 eval $COMANDO
