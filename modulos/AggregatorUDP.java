@@ -207,8 +207,9 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                         
                     String videoId = arr[1].substring(arr[1].lastIndexOf("/") + 1);
                     
-                    if (videoId.equals("favicon.ico")) {
-                        /* Se for um GET de icone, que nao nos interessa */
+                    if (videoId.equals("favicon.ico") || videoId.isEmpty()) {
+                        /* Se for um GET de icone ou outro que nao seja video
+                         * que nao interessa */
                         return Command.CONTINUE;
                     }
                     
@@ -290,7 +291,8 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                              *  pois já será transmitido para o usuário novo pela
                              *  regra flowTo que foi instalada. 
                              */
-                            return Command.STOP;
+                            //return Command.STOP;
+                            return Command.CONTINUE;
                         } else {
                                 
                             /* Se a escrita da regra falhar */
@@ -345,7 +347,6 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
         return flowToUDP;
     }
 }
-
 
 
 
