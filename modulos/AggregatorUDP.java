@@ -291,8 +291,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                              *  pois já será transmitido para o usuário novo pela
                              *  regra flowTo que foi instalada. 
                              */
-                            //return Command.STOP;
-                            return Command.CONTINUE;
+                            return Command.STOP;
                         } else {
                                 
                             /* Se a escrita da regra falhar */
