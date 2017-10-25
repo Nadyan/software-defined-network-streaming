@@ -25,7 +25,7 @@ diminuir o consumo de recursos de rede, como a largura de banda e a carga no enl
 entre o servidor e o consumidor do conteúdo, possibilitando escalar a quantidade de usuários simultâneos
 recebendo tal conteúdo.
 
-![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/Experimentos/propGenerico.png)
+![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/figuras/propGenerico.png)
 
   A proposta abrange a transmissão de vídeo com uma quanitdade n de servidores de conteúdo, na qual cada
 servidor pode disponibilizar uma quantidade indefinida de conteúdos diferenciados, Entre os servidores
@@ -36,11 +36,11 @@ dos fluxos semelhantes, ou seja, caso exista uma transmissão de um conteúdo se
 requisita o mesmo conteúdo, tais fluxos são agregados e transmitidos como um único fluxo a partir do servidor
 até o switch mais próximo dos usuários que realizaram a transmissão do conteúdo.
 
-![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/Experimentos/proposta.png)
+![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/figuras/exemplo.png)
 
   A sequência de eventos é a seguinte:
   
- ![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/Experimentos/sequencia.png)
+ ![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/figuras/sequencia.png)
 
   Com a abordagem proposta, espera-se uma maior escalabilidade do sistema no quesito quantidade de usuários
 simultâneos, justamente pela otimização dos fluxos evitando redundâncias de conteúdo no enlace de comunicação
