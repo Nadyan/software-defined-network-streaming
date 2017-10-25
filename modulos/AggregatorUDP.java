@@ -82,6 +82,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
     private IFloodlightProviderService floodlightProvider;
     private static Logger logger;
     public static final TransportPort UDP_PORT = TransportPort.of(5004);
+    public static final TransportPort TCP_PORT = TransportPort.of(5001);
     
     /*  Listas de requisições */
     protected List<Request> requests;
@@ -248,6 +249,7 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                         OFActions actions = my13Factory.actions();
                         OFOxms oxms = my13Factory.oxms();
                         List<OFAction> actionsTo = new ArrayList<OFAction>();   // Lista que armazena as caracteristicas da regra
+                        List<OFAction> actionsNull = new ArrayList<OFAction>(); // Lista nula para fazer drop de pacotes
                                 
                         /* Criação da regra com um laço For que percorre a lista de requests e verifica todos os de mesmo videoId */
                         for (int i = 0; i < requests.size(); i++) {
@@ -282,10 +284,16 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                         OFFlowAdd flowTo = fluxoUDP(createMatch(sw, UDP_PORT, cntx, originalIp, dstIp), my13Factory, actionsTo, FlowModUtils.PRIORITY_HIGH);
                             
                         if (sw.write(flowTo)) {
-                                
+                             
                             /* Se obter sucesso na escrita da regra */
                                
                             logger.info("Fluxos agregados para o request " + videoId);
+                            
+                            /* Cria regra de drop de pacotes para o usuário parar de reenviar gets
+                             * por falta de resposta */
+                            
+                            OFFlowAdd flowNull = fluxoNullUDP(createMatchNull(sw, TCP_PORT, cntx, srcIp, dstIp), my13Factory, actionsNull);
+                            sw.write(flowNull);
                             
                             /*  Barra o pacote para ele nao seguir para o servidor,
                              *  pois já será transmitido para o usuário novo pela
@@ -325,6 +333,23 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
         return mb.build();
     }
     
+    private Match createMatchNull(IOFSwitch sw, TransportPort port, FloodlightContext cntx, IPv4Address srcIp, IPv4Address dstIp) {
+        
+        /* Criação do match para dar drop nos pacotes de requisição vindos do segundo usuário
+         * após o fluxo agregado ser criado
+         */
+        
+        Match.Builder mb = sw.getOFFactory().buildMatch();
+        
+        mb.setExact(MatchField.ETH_TYPE, EthType.IPv4)
+          .setExact(MatchField.IPV4_SRC, srcIp)              // IP Cliente
+          .setExact(MatchField.IPV4_DST, dstIp)              // IP Server
+          .setExact(MatchField.IP_PROTO, IpProtocol.TCP);
+          //.setExact(MatchField.TCP_DST,  port);               // HTTP_PORT (5001)
+        
+        return mb.build();
+    }
+    
     private OFFlowAdd fluxoUDP(Match match, OFFactory myFactory, List<OFAction> actions, int prioridade) {
         /* Criação da regra */
         
@@ -344,6 +369,27 @@ public class AggregatorUDP implements IFloodlightModule, IOFMessageListener {
                                 .build();
         
         return flowToUDP;
+    }
+    
+    private OFFlowAdd fluxoNullUDP(Match match, OFFactory myFactory, List<OFAction> actions) {
+        
+        /* Montagem do fluxo para dar drop nos pacotes */
+        
+        Set<OFFlowModFlags> flags = new HashSet<>();
+        flags.add(OFFlowModFlags.SEND_FLOW_REM);
+        
+        OFFlowAdd flowNull = myFactory
+                             .buildFlowAdd()
+                             .setActions(actions)
+                             .setBufferId(OFBufferId.NO_BUFFER)
+                             .setIdleTimeout(120)
+                             .setHardTimeout(0)
+                             .setMatch(match)
+                             .setCookie(U64.of(1L << 59))
+                             .setPriority(FlowModUtils.PRIORITY_HIGH)
+                             .build();
+        
+        return flowNull;
     }
 }
 
