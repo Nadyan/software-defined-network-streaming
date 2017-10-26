@@ -18,12 +18,12 @@ que está sendo configurado, explicitando como cada pacote deve ser roteado atra
 auxiliando assim na entrega do conteúdo para usuários simultâneos e na otimização do uso dos recursos
 da rede.
 
-  O objetivo do trabalho consiste, de forma geral, em especificar uma abordagem para transmissão e 
-distribuição de vídeos em uma rede na qual existem clientes requisitantes e servidores fornecendo o
-conteúdo, de forma a utilizar conceitos e abordagens de Redes Definidas por Software. O propósito é de
-diminuir o consumo de recursos de rede, como a largura de banda e a carga no enlace de comunicação,
-entre o servidor e o consumidor do conteúdo, possibilitando escalar a quantidade de usuários simultâneos
-recebendo tal conteúdo.
+  O objetivo do trabalho consiste, de forma geral, em especificar uma abordagem, denominada 
+ Media Flow Aggregator (MFA) para transmissão e distribuição de vídeos em uma rede na qual existem 
+clientes requisitantes e servidores fornecendo o conteúdo, de forma a utilizar conceitos e abordagens 
+de Redes Definidas por Software. O propósito é de diminuir o consumo de recursos de rede, como a largura 
+de banda e a carga no enlace de comunicação, entre o servidor e o consumidor do conteúdo, possibilitando 
+escalar a quantidade de usuários simultâneos recebendo tal conteúdo.
 
 ![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/figuras/propGenerico.png)
 
