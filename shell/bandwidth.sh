@@ -6,14 +6,15 @@
 # Habilitar as estatisticas:
 curl http://127.0.0.1:8080/wm/statistics/config/enable/json -X POST
 
-# Exp1 -> porta = 2
-# Exp2 -> porta = ?
+# Exp1 -> porta server = 2
+# Exp2 -> porta server = 4
 
-PORTA=2
+PORTA=4
 
-for i in {0..9}
+for i in {0..119}
 do
-    # Executa 10 medicoes, uma a cada segundo
+    # Executa 120 medicoes, uma a cada segundo
     curl http://127.0.0.1:8080/wm/statistics/bandwidth/00:00:00:00:00:00:00:01/$PORTA/json -X GET
     sleep 1 # espera 1 segundo
+    echo " \n\n $i !!"
 done
