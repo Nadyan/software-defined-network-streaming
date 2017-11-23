@@ -38,7 +38,7 @@ até o switch mais próximo dos usuários que realizaram a transmissão do conte
 
 ![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/figuras/exemplo.png)
 
-  A sequência de eventos é a seguinte:
+  A sequência de eventos para a uma nova requisição (Usuário 1) e requisição redundante (Usuário 2) é a seguinte:
   
  ![alt text](https://github.com/Nadyan/SDN_VideoTransmission/blob/master/figuras/sequencia.png)
 
