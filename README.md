@@ -51,3 +51,5 @@ de forma simultânea.
 ou latência. Quando comparado com uma transmissão em uma Rede Convencional com a mesma quantidade de usuários
 simultâneos, a qualidade da transmissão em tais quesitos deve ser superior na abordagem proposta, pela otimização
 do uso da larguda de banda e eliminação dos fluxos redundantes.
+
+**Texto completo disponível.**
